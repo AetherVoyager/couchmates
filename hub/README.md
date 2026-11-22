@@ -30,7 +30,7 @@ Setting it up for friends: [`docs/admin-guide.md`](../docs/admin-guide.md).
 | `ui` | `couchmates-hub-ui` | Dashboard pages. Take data, return HTML |
 | `worker` | `couchmates-hub` | The Worker: routing, admin handlers, hourly job |
 
-Live at `https://couchmates-hub.watch2gether.workers.dev`. The admin password is in `admin-password.local.txt`
+Live at the address `npx wrangler deploy` prints. The admin password is in `admin-password.local.txt`
 (git-ignored).
 
 ## Develop
