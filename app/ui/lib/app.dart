@@ -2,6 +2,7 @@ import 'package:couchmates_core/couchmates_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'chat/app_chat.dart';
 import 'screens/home_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'services/updater.dart';
@@ -41,6 +42,7 @@ class CouchmatesApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => WatchTogether(session: session, navigator: navigatorKey, settings: settings),
         ),
+        ChangeNotifierProvider(lazy: false, create: (_) => AppChat(session: session)),
         ChangeNotifierProvider(
           lazy: false,
           create: (context) => FriendsLink(

@@ -148,6 +148,7 @@ class Chat extends ChangeNotifier {
   void start() {
     if (_running) return;
     _running = true;
+    unawaited(refresh());
     unawaited(_open());
   }
 
@@ -193,7 +194,13 @@ class Chat extends ChangeNotifier {
       await refresh();
       await _catchUp();
     } catch (_) {
-      if (generation == _generation) _scheduleRetry();
+      if (generation != _generation) return;
+      _scheduleRetry();
+      // Without the socket, the list still updates at each retry.
+      if (_failures > 1) {
+        await refresh();
+        await _catchUp();
+      }
     }
   }
 

@@ -18,9 +18,9 @@ class VoiceButton extends StatelessWidget {
         child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
       ),
       VoiceStatus.connected => IconButton.filledTonal(
-        tooltip: voice.micEnabled ? 'Mute' : 'Unmute',
+        tooltip: voice.micError ?? (voice.micEnabled ? 'Mute' : 'Unmute'),
         isSelected: voice.micEnabled,
-        icon: const Icon(Icons.mic_off),
+        icon: Icon(Icons.mic_off, color: voice.micError != null ? Colors.orange : null),
         selectedIcon: const Icon(Icons.mic),
         onPressed: () => voice.setMic(!voice.micEnabled),
       ),

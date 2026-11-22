@@ -12,6 +12,7 @@ class VoiceMember {
     required this.speaking,
     required this.muted,
     this.receiving = false,
+    this.partyPeer,
   });
 
   final String identity;
@@ -23,10 +24,17 @@ class VoiceMember {
   /// Someone else's audio is reaching this device (subscribed and playing).
   final bool receiving;
 
+  /// Their peer id in the watch party, when their app shares it (see
+  /// [VoiceSession.setPartyPeer]).
+  final String? partyPeer;
+
   /// The person, the same on all their devices (identities are
   /// `<user id>:<device id>`).
   String get person => identity.split(':').first;
 }
+
+/// The participant attribute that carries the watch party peer id.
+const partyPeerAttribute = 'party_peer';
 
 /// A microphone the user can pick.
 class MicDevice {
@@ -52,8 +60,10 @@ abstract class VoiceSession {
   /// Fires whenever [members] or [micEnabled] may have changed.
   Stream<void> get changes;
 
-  /// Completes when the server or network drops the session (not on [close]).
-  Future<void> get dropped;
+  /// Completes when the server or network drops the session (not on
+  /// [close]): true when rejoining makes sense, false when this user was
+  /// removed or joined from elsewhere with the same identity.
+  Future<bool> get dropped;
 
   List<VoiceMember> get members;
   bool get micEnabled;
@@ -68,8 +78,12 @@ abstract class VoiceSession {
   /// who join later too.
   Future<void> setVolumes(Map<String, double> perPerson, double others);
 
-  /// Uses the microphone with this device id from now on.
+  /// Uses the microphone with this device id from now on; empty for the
+  /// system default.
   Future<void> setMicDevice(String deviceId);
+
+  /// Tells everyone in voice this user's watch party peer id.
+  Future<void> setPartyPeer(String peerId);
 
   Future<void> close();
 }
@@ -122,16 +136,17 @@ class LiveKitVoiceSession implements VoiceSession {
   );
   late final lk.EventsListener<lk.RoomEvent> _listener = _room.createListener();
   final _changes = StreamController<void>.broadcast();
-  final _dropped = Completer<void>();
+  final _dropped = Completer<bool>();
   bool _closing = false;
 
   Future<void> _connect(String url, String token, bool micEnabled, String? micDeviceId) async {
     _room.addListener(_changed);
     _listener
-      ..on<lk.RoomDisconnectedEvent>((_) {
-        if (!_closing && !_dropped.isCompleted) _dropped.complete();
+      ..on<lk.RoomDisconnectedEvent>((e) {
+        if (!_closing && !_dropped.isCompleted) _dropped.complete(_worthRejoining(e.reason));
         _changed();
       })
+      ..on<lk.ParticipantAttributesChanged>((_) => _changed())
       ..on<lk.ActiveSpeakersChangedEvent>((_) => _changed())
       ..on<lk.ParticipantConnectedEvent>((_) => _changed())
       ..on<lk.ParticipantDisconnectedEvent>((_) => _changed())
@@ -152,6 +167,14 @@ class LiveKitVoiceSession implements VoiceSession {
     }
   }
 
+  static bool _worthRejoining(lk.DisconnectReason? reason) => switch (reason) {
+    lk.DisconnectReason.duplicateIdentity ||
+    lk.DisconnectReason.participantRemoved ||
+    lk.DisconnectReason.roomDeleted ||
+    lk.DisconnectReason.clientInitiated => false,
+    _ => true,
+  };
+
   void _changed() {
     if (!_changes.isClosed) _changes.add(null);
   }
@@ -160,7 +183,7 @@ class LiveKitVoiceSession implements VoiceSession {
   Stream<void> get changes => _changes.stream;
 
   @override
-  Future<void> get dropped => _dropped.future;
+  Future<bool> get dropped => _dropped.future;
 
   @override
   bool get micEnabled => _room.localParticipant?.isMicrophoneEnabled() ?? false;
@@ -192,6 +215,7 @@ class LiveKitVoiceSession implements VoiceSession {
         !isLocal &&
         participant is lk.RemoteParticipant &&
         participant.audioTrackPublications.any((t) => t.subscribed && !t.muted),
+    partyPeer: participant.attributes[partyPeerAttribute],
   );
 
   @override
@@ -223,9 +247,30 @@ class LiveKitVoiceSession implements VoiceSession {
   @override
   Future<void> setMicDevice(String deviceId) async {
     try {
-      final device = (await lk.Hardware.instance.audioInputs()).where((d) => d.deviceId == deviceId).firstOrNull;
+      final inputs = await lk.Hardware.instance.audioInputs();
+      final device = deviceId.isEmpty
+          ? _systemDefault(inputs)
+          : inputs.where((d) => d.deviceId == deviceId).firstOrNull;
       if (device != null) await _room.setAudioInputDevice(device);
     } catch (_) {}
+  }
+
+  /// The system's default microphone: the one named "default" where the
+  /// platform lists one, else the first.
+  static lk.MediaDevice? _systemDefault(List<lk.MediaDevice> inputs) =>
+      inputs.where((d) => d.deviceId == 'default').firstOrNull ??
+      inputs.where((d) => d.label.toLowerCase().startsWith('default')).firstOrNull ??
+      inputs.firstOrNull;
+
+  @override
+  Future<void> setPartyPeer(String peerId) async {
+    final local = _room.localParticipant;
+    if (local == null || local.attributes[partyPeerAttribute] == peerId) return;
+    try {
+      await local.setAttributes({partyPeerAttribute: peerId});
+    } catch (_) {
+      // An older Hub's token may not allow it; matching falls back to names.
+    }
   }
 
   @override

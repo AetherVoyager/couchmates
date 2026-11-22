@@ -271,6 +271,126 @@ void main() {
       expect(sessions.single.mic, 'usb-mic');
     });
 
+    VoiceChat fakeVoice(List<FakeVoiceSession> sessions, {bool joinMuted = true, Object? micFails}) => VoiceChat(
+      token: (_) async => VoiceTokenResponse.fromJson(jsonDecode(contract('voice_token_response.json')) as Json),
+      available: () => true,
+      joinMuted: joinMuted,
+      retryDelays: const [Duration.zero, Duration.zero],
+      connect:
+          ({
+            required url,
+            required token,
+            required micEnabled,
+            micDeviceId,
+            volumes = const {},
+            otherVolume = 1,
+          }) async => (FakeVoiceSession(micEnabled)
+            ..micFails = micFails
+            ..also(sessions.add)),
+    );
+
+    Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 10));
+
+    test('a mic that will not turn on leaves voice connected for listening', () async {
+      final sessions = <FakeVoiceSession>[];
+      final voice = fakeVoice(sessions, joinMuted: false, micFails: Exception('NotAllowedError'));
+      await voice.roomChanged('ROOM1');
+      expect(voice.connected, isTrue);
+      expect(voice.micEnabled, isFalse);
+      expect(voice.micError, contains('Privacy'));
+
+      sessions.single.micFails = null;
+      await voice.setMic(true);
+      expect(voice.micEnabled, isTrue);
+      expect(voice.micError, isNull);
+    });
+
+    test('rejoins by itself after a drop, with the mic as it was', () async {
+      final sessions = <FakeVoiceSession>[];
+      final voice = fakeVoice(sessions);
+      await voice.roomChanged('ROOM1');
+      await voice.setMic(true);
+      sessions.single.drop();
+      await settle();
+      expect(sessions.first.closed, isTrue, reason: 'the dropped connection is cleaned up');
+      expect(sessions, hasLength(2));
+      expect(voice.connected, isTrue);
+      expect(voice.micEnabled, isTrue);
+    });
+
+    test('does not rejoin when removed, or after leaving the room', () async {
+      final sessions = <FakeVoiceSession>[];
+      final voice = fakeVoice(sessions);
+      await voice.roomChanged('ROOM1');
+      sessions.single.drop(retry: false);
+      await settle();
+      expect(sessions, hasLength(1));
+      expect(voice.status, VoiceStatus.failed);
+
+      await voice.join();
+      sessions.last.drop();
+      await voice.roomChanged(null);
+      await settle();
+      expect(sessions, hasLength(2));
+      expect(voice.status, VoiceStatus.off);
+    });
+
+    test('stops rejoining when every attempt fails', () async {
+      var calls = 0;
+      final voice = VoiceChat(
+        token: (_) async {
+          if (++calls > 1) throw const HubException('offline');
+          return VoiceTokenResponse.fromJson(jsonDecode(contract('voice_token_response.json')) as Json);
+        },
+        available: () => true,
+        retryDelays: const [Duration.zero, Duration.zero],
+        connect:
+            ({
+              required url,
+              required token,
+              required micEnabled,
+              micDeviceId,
+              volumes = const {},
+              otherVolume = 1,
+            }) async => FakeVoiceSession(micEnabled)..also((s) => Future<void>.delayed(Duration.zero, s.drop)),
+      );
+      await voice.roomChanged('ROOM1');
+      await settle();
+      expect(calls, 3, reason: 'the first join, then one per retry delay');
+      expect(voice.status, VoiceStatus.failed);
+      expect(voice.rejoining, isFalse);
+    });
+
+    test('switching back to the system default mic applies at once', () async {
+      final sessions = <FakeVoiceSession>[];
+      final voice = fakeVoice(sessions);
+      await voice.roomChanged('ROOM1');
+      await voice.setMicDevice('usb-mic');
+      await voice.setMicDevice(null);
+      expect(sessions.single.mic, '');
+    });
+
+    test('matches party people to voice by peer id, and by name only when unique', () async {
+      final sessions = <FakeVoiceSession>[];
+      final voice = fakeVoice(sessions);
+      await voice.setPartyPeer('peer-me');
+      await voice.roomChanged('ROOM1');
+      await settle();
+      expect(sessions.single.partyPeer, 'peer-me');
+      VoiceMember m(String id, String name, {String? peer}) =>
+          VoiceMember(identity: id, name: name, isLocal: false, speaking: false, muted: true, partyPeer: peer);
+      sessions.single.members = [
+        m('u1:d1', 'Sam', peer: 'p1'),
+        m('u2:d2', 'Sam', peer: 'p2'),
+        m('u3:d3', 'Ann'),
+        m('u4:d4', 'Bo'),
+        m('u5:d5', 'Bo'),
+      ];
+      expect(voice.memberForPeer('p2', 'Sam')?.identity, 'u2:d2');
+      expect(voice.memberForPeer('p9', 'Ann')?.identity, 'u3:d3', reason: 'an older app: by name');
+      expect(voice.memberForPeer('p9', 'Bo'), isNull, reason: 'two Bos without peer ids: no guess');
+    });
+
     test('shows the Hub error when there is no token', () async {
       final voice = VoiceChat(
         token: (_) async => throw const HubException("Voice chat isn't set up on this Hub.", status: 503),
@@ -297,16 +417,23 @@ class FakeVoiceSession implements VoiceSession {
   bool micEnabled;
   bool closed = false;
   final _changes = StreamController<void>.broadcast();
-  final _dropped = Completer<void>();
+  final _dropped = Completer<bool>();
+
+  /// Set to make turning the mic on fail, as a blocked or missing mic does.
+  Object? micFails;
+  String? partyPeer;
+
+  /// The connection drops; [retry] as LiveKit's reason would say.
+  void drop({bool retry = true}) => _dropped.complete(retry);
 
   @override
   Stream<void> get changes => _changes.stream;
 
   @override
-  Future<void> get dropped => _dropped.future;
+  Future<bool> get dropped => _dropped.future;
 
   @override
-  List<VoiceMember> get members => const [];
+  List<VoiceMember> members = const [];
 
   @override
   double get micLevel => micEnabled ? 0.5 : 0;
@@ -325,7 +452,13 @@ class FakeVoiceSession implements VoiceSession {
   Future<void> setMicDevice(String deviceId) async => mic = deviceId;
 
   @override
-  Future<void> setMicEnabled(bool enabled) async => micEnabled = enabled;
+  Future<void> setMicEnabled(bool enabled) async {
+    if (enabled && micFails != null) throw micFails!;
+    micEnabled = enabled;
+  }
+
+  @override
+  Future<void> setPartyPeer(String peerId) async => partyPeer = peerId;
 
   @override
   Future<void> close() async => closed = true;
