@@ -4,6 +4,8 @@ import 'package:couchmates_core/couchmates_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../chat/app_chat.dart';
+import '../chat/chat_view.dart';
 import '../widgets/person_avatar.dart';
 import '../widgets/poster.dart';
 import 'friends.dart';
@@ -11,8 +13,8 @@ import 'friends.dart';
 /// The floating bubble in the bottom-right corner over every screen: who's
 /// watching what, and asking to join. Tapping it opens a panel above it.
 ///
-/// The panel keeps its content in [_ActivityView], so a chat view can sit
-/// beside it later behind a switch in the header.
+/// The panel's header switches between who's watching ([_ActivityView]) and
+/// the chat ([ChatView]).
 class FriendsBubble extends StatefulWidget {
   const FriendsBubble({super.key, required this.child});
 
@@ -26,6 +28,7 @@ class FriendsBubble extends StatefulWidget {
 class _FriendsBubbleState extends State<FriendsBubble> {
   bool _open = false;
   int _seenAsks = 0;
+  int _seenChatOpens = 0;
   bool _hover = false;
 
   void _toggle() => setState(() => _open = !_open);
@@ -37,9 +40,20 @@ class _FriendsBubbleState extends State<FriendsBubble> {
     final link = context.watch<FriendsLink>();
     final presence = link.presence;
 
+    final chat = context.watch<AppChat>();
+
     // Someone asked to join: open so the answer is one click away.
     if (link.askedCount != _seenAsks) {
       _seenAsks = link.askedCount;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        chat.showing = false;
+        if (!_open) setState(() => _open = true);
+      });
+    }
+    // Something asked for a chat (such as Message on a friend).
+    if (chat.openRequests != _seenChatOpens) {
+      _seenChatOpens = chat.openRequests;
       if (!_open) WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? setState(() => _open = true) : null);
     }
 
@@ -87,7 +101,9 @@ class _FriendsBubbleState extends State<FriendsBubble> {
                         width: panelWidth,
                         child: ConstrainedBox(
                           constraints: BoxConstraints(maxHeight: panelHeight),
-                          child: _Panel(onClose: _toggle),
+                          // The bubble sits above the navigator, so the panel brings
+                          // its own overlay for tooltips, text selection and pickers.
+                          child: Overlay.wrap(alwaysSizeToContent: true, child: _Panel(onClose: _toggle)),
                         ),
                       )
                     : const SizedBox.shrink(key: ValueKey('none')),
@@ -116,6 +132,7 @@ class _FriendsBubbleState extends State<FriendsBubble> {
                     open: _open,
                     watching: presence.watchingCount,
                     asking: presence.incoming.length,
+                    unread: chat.unread,
                     onTap: _toggle,
                   ),
                 ),
@@ -128,11 +145,20 @@ class _FriendsBubbleState extends State<FriendsBubble> {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.open, required this.watching, required this.asking, required this.onTap});
+  const _Bubble({
+    required this.open,
+    required this.watching,
+    required this.asking,
+    required this.unread,
+    required this.onTap,
+  });
 
   final bool open;
   final int watching;
   final int asking;
+
+  /// Unread chat messages.
+  final int unread;
   final VoidCallback onTap;
 
   @override
@@ -140,6 +166,8 @@ class _Bubble extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final label = asking > 0
         ? '$asking asking to join'
+        : unread > 0
+        ? '$unread unread messages'
         : watching > 0
         ? '$watching watching now'
         : "Who's watching";
@@ -147,10 +175,24 @@ class _Bubble extends StatelessWidget {
       button: true,
       label: label,
       child: Badge(
-        isLabelVisible: !open && (asking > 0 || watching > 0),
-        backgroundColor: asking > 0 ? scheme.error : const Color(0xFF3ECF8E),
-        textColor: asking > 0 ? scheme.onError : Colors.black,
-        label: Text('${asking > 0 ? asking : watching}'),
+        isLabelVisible: !open && (asking > 0 || unread > 0 || watching > 0),
+        backgroundColor: asking > 0
+            ? scheme.error
+            : unread > 0
+            ? scheme.tertiary
+            : const Color(0xFF3ECF8E),
+        textColor: asking > 0
+            ? scheme.onError
+            : unread > 0
+            ? scheme.onTertiary
+            : Colors.black,
+        label: Text(
+          asking > 0
+              ? '$asking'
+              : unread > 0
+              ? (unread > 99 ? '99+' : '$unread')
+              : '$watching',
+        ),
         offset: const Offset(-2, 2),
         child: Material(
           color: open ? scheme.primary : scheme.primaryContainer,
@@ -188,6 +230,7 @@ class _Panel extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final link = context.watch<FriendsLink>();
+    final chat = context.watch<AppChat>();
     final presence = link.presence;
     final online = presence.friends.where((f) => f.online).length;
     final summary = presence.offline
@@ -206,27 +249,83 @@ class _Panel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 8, 10),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(14, 10, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Who's watching", style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                      Text(summary, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    _Tab(label: 'Watching', selected: !chat.showing, onTap: () => chat.showing = false),
+                    const SizedBox(width: 6),
+                    _Tab(label: 'Chat', selected: chat.showing, count: chat.unread, onTap: () => chat.showing = true),
+                    const Spacer(),
+                    IconButton(icon: const Icon(Icons.close_rounded, size: 20), onPressed: onClose),
+                  ],
                 ),
-                IconButton(icon: const Icon(Icons.close_rounded, size: 20), onPressed: onClose),
+                if (!chat.showing)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 2),
+                    child: Text(summary, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                  ),
               ],
             ),
           ),
           Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
-          const Flexible(child: _ActivityView()),
-          Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
-          const _ShareSwitch(),
+          if (chat.showing)
+            const Expanded(child: ChatView())
+          else ...[
+            const Flexible(child: _ActivityView()),
+            Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
+            const _ShareSwitch(),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// A header tab: Watching or Chat, with an unread count.
+class _Tab extends StatelessWidget {
+  const _Tab({required this.label, required this.selected, required this.onTap, this.count = 0});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Material(
+      color: selected ? scheme.secondaryContainer : Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
+                ),
+              ),
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                Badge(
+                  label: Text(count > 99 ? '99+' : '$count'),
+                  backgroundColor: scheme.tertiary,
+                  textColor: scheme.onTertiary,
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -460,8 +559,14 @@ class _FriendTile extends StatelessWidget {
               ],
             ),
           ),
+          IconButton(
+            tooltip: 'Message ${friend.person.name}',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+            onPressed: () => context.read<AppChat>().openWith(friend.person),
+          ),
           if (w != null) ...[
-            const SizedBox(width: 10),
+            const SizedBox(width: 4),
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: SizedBox(

@@ -102,6 +102,8 @@ dependencies:
   # The connector passed to openwatchparty, which logs relay connect failures.
   web_socket: ^1.0.1
   livekit_client: ^2.14.0
+  # The chat composer's emoji picker.
+  emoji_picker_flutter: ^4.5.4
 
 dev_dependencies:
   archive: ^4.0.9
