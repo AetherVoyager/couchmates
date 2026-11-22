@@ -1,7 +1,7 @@
 # Admin guide
 
 Setting up and running Couchmates for your friends. You need a Telegram-Stremio server, and optionally a LiveKit
-server for voice. The Hub is at `https://couchmates-hub.watch2gether.workers.dev`.
+server for voice. The Hub is at the `workers.dev` address `npx wrangler deploy` prints (or your own domain).
 
 ## First sign-in
 
