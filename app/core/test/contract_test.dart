@@ -50,6 +50,12 @@ void main() {
     roundTrips('file_tracks.json', (j) => FileTracks.fromJson(j).toJson());
     roundTrips('file_tracks_none.json', (j) => FileTracks.fromJson(j).toJson());
     roundTrips('file_tracks_upload.json', (j) => FileTracksUpload.fromJson(j).toJson());
+    roundTrips('chat_overview.json', (j) => ChatOverview.fromJson(j).toJson());
+    roundTrips('chat_messages.json', (j) => ChatMessages.fromJson(j).toJson());
+    roundTrips('chat_send.json', (j) => ChatSend.fromJson(j).toJson());
+    roundTrips('chat_message.json', (j) => ChatMessage.fromJson(j).toJson());
+    roundTrips('chat_read.json', (j) => ChatRead.fromJson(j).toJson());
+    roundTrips('chat_event.json', (j) => ChatEvent.fromJson(j).toJson());
   });
 
   group('rules match the shared contract', () {
@@ -64,6 +70,21 @@ void main() {
     test('passwords', () {
       for (final c in cases['passwords'] as List) {
         expect(passwordProblem(c['input'] as String) == null, c['ok'], reason: c['input'] as String);
+      }
+    });
+
+    test('direct channels', () {
+      for (final c in cases['direct_channels'] as List) {
+        expect(directChannel(c['a'] as String, c['b'] as String), c['expect']);
+      }
+    });
+
+    test('chat texts', () {
+      for (final c in cases['chat_texts'] as List) {
+        final input = (c['input'] as String) * ((c['repeat'] as int?) ?? 1);
+        final got = chatText(input);
+        expect(got != null, c['ok'], reason: input);
+        if (c['expect'] != null) expect(got, c['expect']);
       }
     });
 

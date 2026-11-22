@@ -30,6 +30,22 @@ String? roomForWatchCode(String code) {
   return cleaned.length >= 4 && cleaned.length <= 16 ? 'couchmates-$cleaned' : null;
 }
 
+/// The chat channel everyone on the Hub can read.
+const publicChannel = 'public';
+
+/// Longest chat message, in characters (Unicode code points, as the Hub counts).
+const maxChatChars = 2000;
+
+/// The private chat between users [a] and [b]: `dm:<id>:<id>`, ids sorted.
+String directChannel(String a, String b) => a.compareTo(b) <= 0 ? 'dm:$a:$b' : 'dm:$b:$a';
+
+/// [input] as a chat message: trimmed, not empty and at most [maxChatChars]
+/// characters. Null otherwise.
+String? chatText(String input) {
+  final text = input.trim();
+  return text.isNotEmpty && text.runes.length <= maxChatChars ? text : null;
+}
+
 int _utf8Length(String s) {
   var n = 0;
   for (final r in s.runes) {

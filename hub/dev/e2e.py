@@ -52,6 +52,55 @@ def totp(secret_b32, t=None, offset=0):
     return "%06d" % ((struct.unpack(">I", h[o:o + 4])[0] & 0x7FFFFFFF) % 1000000)
 
 
+def ws_open(path, headers):
+    """Opens a WebSocket by hand (the standard library has no client). None unless upgraded."""
+    import os, socket
+    u = urllib.parse.urlparse(H)
+    sock = socket.create_connection((u.hostname, u.port or 80), timeout=10)
+    key = base64.b64encode(os.urandom(16)).decode()
+    extra = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
+    sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {u.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                  f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n{extra}\r\n").encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        chunk = sock.recv(1)
+        if not chunk:
+            return None
+        head += chunk
+    return sock if head.startswith(b"HTTP/1.1 101") else None
+
+
+def ws_read(sock):
+    """The next text frame, or None."""
+    def exactly(n):
+        data = b""
+        while len(data) < n:
+            chunk = sock.recv(n - len(data))
+            if not chunk:
+                raise EOFError
+            data += chunk
+        return data
+    try:
+        while True:
+            b0, b1 = exactly(2)
+            size = b1 & 127
+            if size == 126:
+                size = struct.unpack(">H", exactly(2))[0]
+            elif size == 127:
+                size = struct.unpack(">Q", exactly(8))[0]
+            data = exactly(size)
+            if b0 & 15 == 1:
+                return data.decode()
+    except (EOFError, OSError):
+        return None
+
+
+def ws_send(sock, text):
+    import os
+    data, mask = text.encode(), os.urandom(4)
+    sock.sendall(bytes([0x81, 0x80 | len(data)]) + mask + bytes(c ^ mask[i % 4] for i, c in enumerate(data)))
+
+
 def check(label, cond, extra=""):
     print(("PASS " if cond else "FAIL ") + label + (f"  [{extra}]" if extra and not cond else ""))
     if not cond:
@@ -207,6 +256,52 @@ s, _, body = call(anon, "/api/app/join-requests/cancel", data={"id": out[0]["id"
 check("alice clears it", s == 200 and not json.loads(body)["requests"], body)
 s, _, body = call(anon, "/api/app/join-requests", data={"to_user_id": json.loads(call(anon, "/api/app/config", headers=auth)[2])["user"]["id"]}, headers=bob)
 check("can't ask to join yourself... or someone idle", s in (400, 409), body)
+
+# --- Chat: public and private, saved, and pushed live over a WebSocket
+alice_id = json.loads(call(anon, "/api/app/config", headers=auth)[2])["user"]["id"]
+s, _, _ = call(anon, "/api/app/chat")
+check("chat needs sign-in", s == 401)
+s, _, _ = call(anon, "/api/app/chat/live", headers=auth)
+check("live chat wants a WebSocket", s == 426)
+live = ws_open("/api/app/chat/live", auth)
+check("alice opens the live chat socket", live is not None)
+s, _, body = call(anon, "/api/app/chat/send", data={"channel": "public", "text": "  hi 👋 "}, headers=auth)
+pub_msg = json.loads(body) if s == 200 else {}
+check("alice writes in the public chat", s == 200 and pub_msg["text"] == "hi 👋" and pub_msg["from"]["id"] == alice_id, body)
+s, _, body = call(anon, "/api/app/chat/send", data={"channel": "dm:" + alice_id, "text": "psst"}, headers=bob)
+dm = json.loads(body) if s == 200 else {}
+dm_channel = "dm:" + ":".join(sorted([alice_id, bob_id]))
+check("bob messages alice privately", s == 200 and dm["channel"] == dm_channel, body)
+frames = [ws_read(live) for _ in range(2)] if live else []
+got = [json.loads(f)["message"]["id"] for f in frames if f]
+check("both arrive live", got == [pub_msg.get("id"), dm.get("id")], frames)
+if live:
+    ws_send(live, "ping")
+check("the socket answers ping", live is not None and ws_read(live) == "pong")
+s, _, body = call(anon, "/api/app/chat", headers=bob)
+chans = {c["id"]: c for c in json.loads(body)["channels"]} if s == 200 else {}
+check("bob sees alice's public message unread, his own as read",
+      chans.get("public", {}).get("unread") == 1 and chans.get(dm_channel, {}).get("unread") == 0
+      and chans[dm_channel]["person"]["id"] == alice_id, body)
+s, _, body = call(anon, "/api/app/chat", headers=auth)
+chans = {c["id"]: c for c in json.loads(body)["channels"]} if s == 200 else {}
+check("alice has one unread private message from bob", chans.get(dm_channel, {}).get("unread") == 1
+      and chans[dm_channel]["person"]["name"] == "Bob" and chans[dm_channel]["last"]["text"] == "psst", body)
+s, _, _ = call(anon, "/api/app/chat/read", data={"channel": dm_channel, "up_to": dm.get("id", 0)}, headers=auth)
+chans = {c["id"]: c for c in json.loads(call(anon, "/api/app/chat", headers=auth)[2])["channels"]}
+check("reading clears it", s == 200 and chans[dm_channel]["unread"] == 0)
+s, _, body = call(anon, f"/api/app/chat/messages?channel={dm_channel}", headers=bob)
+check("the private chat is kept", s == 200 and [m["text"] for m in json.loads(body)["messages"]] == ["psst"], body)
+s, _, body = call(anon, f"/api/app/chat/messages?channel=public&after={pub_msg.get('id', 0)}", headers=bob)
+check("nothing newer than the last message", s == 200 and json.loads(body) == {"messages": [], "more": False}, body)
+s, _, _ = call(anon, "/api/app/chat/messages?channel=dm:0000000000000000:ffffffffffffffff", headers=auth)
+check("someone else's private chat stays private", s == 404)
+s, _, _ = call(anon, "/api/app/chat/send", data={"channel": "public", "text": "   "}, headers=auth)
+check("empty messages are refused", s == 400)
+s, _, _ = call(anon, "/api/app/chat/send", data={"channel": "dm:" + alice_id, "text": "me"}, headers=auth)
+check("no private chat with yourself", s == 404)
+if live:
+    live.close()
 
 # --- Admin resets a password: everyone signed out
 uid = re.search(r'href="/users/([0-9a-f]{16})">Alice B\.<', call(b, "/users")[2]).group(1)

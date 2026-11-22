@@ -2,8 +2,11 @@
 //! or an admin page handler, and runs the hourly job.
 
 mod admin;
+mod chat_live;
 
-use couchmates_hub_core::{api, crypto, social, store, tgs, web};
+pub use chat_live::ChatLive;
+
+use couchmates_hub_core::{api, chat, crypto, social, store, tgs, web};
 
 use worker::{Context, Env, Method, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
@@ -58,6 +61,11 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             (Method::Post, "join-requests/cancel") => social::cancel_join_request(req, &store).await,
             (Method::Get, "tracks") => api::file_tracks(req, &store).await,
             (Method::Post, "tracks") => api::save_file_tracks(req, &store).await,
+            (Method::Get, "chat") => chat::channels(req, &store).await,
+            (Method::Get, "chat/messages") => chat::messages(req, &store).await,
+            (Method::Post, "chat/send") => chat::send(req, &store, env).await,
+            (Method::Post, "chat/read") => chat::read(req, &store).await,
+            (Method::Get, "chat/live") => chat::live(req, &store, env).await,
             _ => web::json_error("Not found", 404),
         };
     }

@@ -18,6 +18,7 @@
 pub mod api;
 pub mod auth;
 pub mod catalog_check;
+pub mod chat;
 pub mod crypto;
 pub mod livekit;
 pub mod social;

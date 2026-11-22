@@ -1,0 +1,27 @@
+{
+  "channels": [
+    {
+      "id": "public",
+      "last": {
+        "id": 121,
+        "channel": "public",
+        "from": { "id": "1111222233334444", "name": "Bob", "photo": "/api/app/photos/1111222233334444?v=1795270000" },
+        "text": "Starting Inception in 5 🍿",
+        "sent_at": 1795280000
+      },
+      "unread": 3
+    },
+    {
+      "id": "dm:1111222233334444:5555666677778888",
+      "person": { "id": "5555666677778888", "name": "Carol" },
+      "last": {
+        "id": 118,
+        "channel": "dm:1111222233334444:5555666677778888",
+        "from": { "id": "5555666677778888", "name": "Carol" },
+        "text": "save me a seat",
+        "sent_at": 1795279000
+      },
+      "unread": 0
+    }
+  ]
+}

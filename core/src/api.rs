@@ -29,6 +29,11 @@
 //! | `POST /api/app/join-requests/cancel` | [`JoinRequestCancel`] | [`Activity`] |
 //! | `GET /api/app/tracks?key=…` | | [`FileTracks`] |
 //! | `POST /api/app/tracks` | [`FileTracksUpload`] | [`OkResponse`] |
+//! | `GET /api/app/chat` | | [`ChatOverview`] |
+//! | `GET /api/app/chat/messages?channel=public&before=120&after=80` | | [`ChatMessages`] |
+//! | `POST /api/app/chat/send` | [`ChatSend`] | [`ChatMessage`] |
+//! | `POST /api/app/chat/read` | [`ChatRead`] | [`OkResponse`] |
+//! | `GET /api/app/chat/live` (WebSocket) | | a stream of [`ChatEvent`] text frames |
 
 use serde::{Deserialize, Serialize};
 
@@ -57,6 +62,11 @@ pub mod paths {
     pub const JOIN_REQUESTS_ANSWER: &str = "/api/app/join-requests/answer";
     pub const JOIN_REQUESTS_CANCEL: &str = "/api/app/join-requests/cancel";
     pub const TRACKS: &str = "/api/app/tracks";
+    pub const CHAT: &str = "/api/app/chat";
+    pub const CHAT_MESSAGES: &str = "/api/app/chat/messages";
+    pub const CHAT_SEND: &str = "/api/app/chat/send";
+    pub const CHAT_READ: &str = "/api/app/chat/read";
+    pub const CHAT_LIVE: &str = "/api/app/chat/live";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -464,6 +474,72 @@ pub struct FileTracksUpload {
     pub tracks: Vec<FileTrack>,
 }
 
+/// One chat message. Channels are `public` (everyone on the Hub) or a
+/// private chat between two people, `dm:<user id>:<user id>` with the ids
+/// sorted (see `rules::direct_channel`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatMessage {
+    /// Grows with every message on the Hub, so it orders and pages them.
+    pub id: i64,
+    pub channel: String,
+    pub from: Person,
+    pub text: String,
+    /// Unix seconds.
+    pub sent_at: i64,
+}
+
+/// A channel this user can read: the public one, or a private chat.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatChannel {
+    pub id: String,
+    /// The other person, for a private chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person: Option<Person>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<ChatMessage>,
+    /// Messages from others after this user's read marker.
+    pub unread: u32,
+}
+
+/// The public channel first, then private chats, latest message first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatOverview {
+    pub channels: Vec<ChatChannel>,
+}
+
+/// A page of one channel, oldest first. Without `before` or `after` it's the
+/// latest page; `before` pages back, `after` fetches what's newer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatMessages {
+    pub messages: Vec<ChatMessage>,
+    /// There are older (or, with `after`, newer) messages than this page.
+    pub more: bool,
+}
+
+/// Sends [text] to [channel]: `public`, or `dm:<user id>` (or the full
+/// `dm:<a>:<b>` id) for a private chat with that user.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatSend {
+    pub channel: String,
+    pub text: String,
+}
+
+/// Marks [channel] read up to and including message [up_to].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatRead {
+    pub channel: String,
+    pub up_to: i64,
+}
+
+/// A frame on the live chat socket. `kind` is `message` for now; apps ignore
+/// kinds they don't know. A `ping` text frame is answered with `pong`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatEvent {
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<ChatMessage>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OkResponse {
     pub ok: bool,
@@ -524,5 +600,11 @@ mod tests {
         round_trips::<FileTracks>(include_str!("../contract/file_tracks.json"));
         round_trips::<FileTracks>(include_str!("../contract/file_tracks_none.json"));
         round_trips::<FileTracksUpload>(include_str!("../contract/file_tracks_upload.json"));
+        round_trips::<ChatOverview>(include_str!("../contract/chat_overview.json"));
+        round_trips::<ChatMessages>(include_str!("../contract/chat_messages.json"));
+        round_trips::<ChatSend>(include_str!("../contract/chat_send.json"));
+        round_trips::<ChatMessage>(include_str!("../contract/chat_message.json"));
+        round_trips::<ChatRead>(include_str!("../contract/chat_read.json"));
+        round_trips::<ChatEvent>(include_str!("../contract/chat_event.json"));
     }
 }

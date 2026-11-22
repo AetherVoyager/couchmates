@@ -137,6 +137,7 @@ dependencies = [
  "couchmates-hub-ui",
  "maud",
  "serde_json",
+ "wasm-bindgen",
  "worker",
 ]
 

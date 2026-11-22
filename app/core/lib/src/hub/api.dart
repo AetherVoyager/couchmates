@@ -1,6 +1,8 @@
 /// The app API shapes. Mirrors `core/src/api.rs`; see there for each call.
 library;
 
+import '../rules.dart';
+
 typedef Json = Map<String, dynamic>;
 
 abstract final class HubPaths {
@@ -26,6 +28,11 @@ abstract final class HubPaths {
   static const joinRequestsAnswer = '/api/app/join-requests/answer';
   static const joinRequestsCancel = '/api/app/join-requests/cancel';
   static const tracks = '/api/app/tracks';
+  static const chat = '/api/app/chat';
+  static const chatMessages = '/api/app/chat/messages';
+  static const chatSend = '/api/app/chat/send';
+  static const chatRead = '/api/app/chat/read';
+  static const chatLive = '/api/app/chat/live';
 }
 
 class LoginRequest {
@@ -798,6 +805,138 @@ class JoinRequestCancel {
   factory JoinRequestCancel.fromJson(Json j) => JoinRequestCancel(id: j['id'] as String);
 
   Json toJson() => {'id': id};
+}
+
+/// One chat message. Channels are `public` or a private chat
+/// `dm:<user id>:<user id>`, ids sorted (see [directChannel]).
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.channel,
+    required this.from,
+    required this.text,
+    required this.sentAt,
+  });
+
+  /// Grows with every message on the Hub: orders and pages them.
+  final int id;
+  final String channel;
+  final Person from;
+  final String text;
+
+  /// Unix seconds.
+  final int sentAt;
+
+  factory ChatMessage.fromJson(Json j) => ChatMessage(
+    id: (j['id'] as num).toInt(),
+    channel: j['channel'] as String,
+    from: Person.fromJson(j['from'] as Json),
+    text: j['text'] as String,
+    sentAt: (j['sent_at'] as num).toInt(),
+  );
+
+  Json toJson() => {'id': id, 'channel': channel, 'from': from.toJson(), 'text': text, 'sent_at': sentAt};
+}
+
+/// A channel this user can read: the public one, or a private chat.
+class ChatChannel {
+  const ChatChannel({required this.id, this.person, this.last, required this.unread});
+
+  final String id;
+
+  /// The other person, for a private chat.
+  final Person? person;
+  final ChatMessage? last;
+
+  /// Messages from others after this user's read marker (counted up to 100).
+  final int unread;
+
+  bool get isPublic => id == publicChannel;
+
+  ChatChannel copyWith({ChatMessage? last, int? unread}) =>
+      ChatChannel(id: id, person: person, last: last ?? this.last, unread: unread ?? this.unread);
+
+  factory ChatChannel.fromJson(Json j) => ChatChannel(
+    id: j['id'] as String,
+    person: j['person'] == null ? null : Person.fromJson(j['person'] as Json),
+    last: j['last'] == null ? null : ChatMessage.fromJson(j['last'] as Json),
+    unread: (j['unread'] as num).toInt(),
+  );
+
+  Json toJson() => {'id': id, 'person': ?person?.toJson(), 'last': ?last?.toJson(), 'unread': unread};
+}
+
+/// The public channel first, then private chats, latest message first.
+class ChatOverview {
+  const ChatOverview({required this.channels});
+
+  final List<ChatChannel> channels;
+
+  factory ChatOverview.fromJson(Json j) =>
+      ChatOverview(channels: [for (final c in j['channels'] as List) ChatChannel.fromJson(c as Json)]);
+
+  Json toJson() => {
+    'channels': [for (final c in channels) c.toJson()],
+  };
+}
+
+/// A page of one channel, oldest first.
+class ChatMessages {
+  const ChatMessages({required this.messages, required this.more});
+
+  final List<ChatMessage> messages;
+
+  /// There are older (or, when asked for what's `after`, newer) messages.
+  final bool more;
+
+  factory ChatMessages.fromJson(Json j) => ChatMessages(
+    messages: [for (final m in j['messages'] as List) ChatMessage.fromJson(m as Json)],
+    more: j['more'] as bool,
+  );
+
+  Json toJson() => {
+    'messages': [for (final m in messages) m.toJson()],
+    'more': more,
+  };
+}
+
+/// Sends [text] to [channel]: `public`, `dm:<user id>` or a full private chat id.
+class ChatSend {
+  const ChatSend({required this.channel, required this.text});
+
+  final String channel;
+  final String text;
+
+  factory ChatSend.fromJson(Json j) => ChatSend(channel: j['channel'] as String, text: j['text'] as String);
+
+  Json toJson() => {'channel': channel, 'text': text};
+}
+
+/// Marks [channel] read up to and including message [upTo].
+class ChatRead {
+  const ChatRead({required this.channel, required this.upTo});
+
+  final String channel;
+  final int upTo;
+
+  factory ChatRead.fromJson(Json j) => ChatRead(channel: j['channel'] as String, upTo: (j['up_to'] as num).toInt());
+
+  Json toJson() => {'channel': channel, 'up_to': upTo};
+}
+
+/// A frame on the live chat socket. Kinds other than `message` are ignored.
+class ChatEvent {
+  const ChatEvent({required this.kind, this.message});
+
+  final String kind;
+  final ChatMessage? message;
+
+  factory ChatEvent.fromJson(Json j) => ChatEvent(
+    kind: j['kind'] as String,
+    message: j['message'] == null ? null : ChatMessage.fromJson(j['message'] as Json),
+  );
+
+  Json toJson() => {'kind': kind, 'message': ?message?.toJson()};
 }
 
 /// One track of a video file, shared through the Hub.
