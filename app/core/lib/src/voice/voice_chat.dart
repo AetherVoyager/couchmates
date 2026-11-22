@@ -7,6 +7,16 @@ import 'voice_session.dart';
 
 enum VoiceStatus { off, connecting, connected, failed }
 
+/// What to tell the user when the microphone won't turn on, from [error].
+String micErrorText(Object error) {
+  final text = '$error'.toLowerCase();
+  if (text.contains('notfound') || text.contains('not found') || text.contains('no device')) {
+    return 'No microphone found. Plug one in or pick another in Settings › Voice. You can still listen.';
+  }
+  return "Couldn't turn on your microphone. In Windows Settings › Privacy & security › Microphone, allow "
+      'desktop apps to use it, and check no other app holds it. You can still listen.';
+}
+
 /// Voice chat for the watch party room the user is in. Joins the room's
 /// voice channel (muted) each time the user enters a room, and leaves with
 /// it. The Hub hands out the LiveKit token, so no keys live in the app.
@@ -23,6 +33,13 @@ class VoiceChat extends ChangeNotifier {
     Map<String, double>? personVolumes,
     this.voiceVolume = 1,
     this.onVolumesChanged,
+    this.retryDelays = const [
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 15),
+      Duration(seconds: 30),
+      Duration(seconds: 60),
+    ],
   }) : _personVolumes = {...?personVolumes},
        _token = token,
        _available = available,
@@ -43,16 +60,31 @@ class VoiceChat extends ChangeNotifier {
   /// Called with the per-person volumes after a change, to save them.
   final void Function(Map<String, double>)? onVolumesChanged;
 
+  /// How long to wait before each automatic rejoin after the connection
+  /// drops. After the last one, the user rejoins by hand.
+  final List<Duration> retryDelays;
+
   VoiceSession? _session;
   StreamSubscription<void>? _changes;
   VoiceStatus _status = VoiceStatus.off;
   String? _error;
   String? _room;
+  String? _partyPeer;
+  String? _micError;
   int _generation = 0;
   bool _disposed = false;
+  Timer? _retry;
+  int _retries = 0;
 
   VoiceStatus get status => _status;
   String? get error => _error;
+
+  /// Why the microphone couldn't be turned on, while it stays off. Voice
+  /// still works for listening.
+  String? get micError => _micError;
+
+  /// Waiting to rejoin by itself after the connection dropped.
+  bool get rejoining => _retry != null;
   bool get available => _available();
   bool get connected => _status == VoiceStatus.connected;
   bool get micEnabled => _session?.micEnabled ?? false;
@@ -80,10 +112,32 @@ class VoiceChat extends ChangeNotifier {
     _notify();
   }
 
+  /// Switches the microphone, live. Null or empty is the system default.
   Future<void> setMicDevice(String? deviceId) async {
     micDeviceId = deviceId;
-    if (deviceId != null && deviceId.isNotEmpty) await _session?.setMicDevice(deviceId);
+    await _session?.setMicDevice(deviceId ?? '');
     _notify();
+  }
+
+  /// This user's peer id in the watch party, shared with voice so each
+  /// person in the party is matched to their voice even when two have the
+  /// same name.
+  Future<void> setPartyPeer(String? peerId) async {
+    if (peerId == _partyPeer) return;
+    _partyPeer = peerId;
+    if (peerId != null) await _session?.setPartyPeer(peerId);
+  }
+
+  /// The voice member for the watch party participant with [peerId] and
+  /// [name]. Matches by peer id; falls back to the name only for people
+  /// whose app doesn't share its peer id, and only when the name is unique.
+  VoiceMember? memberForPeer(String peerId, String name) {
+    final list = members;
+    for (final m in list) {
+      if (m.partyPeer == peerId) return m;
+    }
+    final byName = list.where((m) => m.partyPeer == null && m.name == name).toList();
+    return byName.length == 1 ? byName.single : null;
   }
 
   /// The volumes to start a session with: each known person's, scaled.
@@ -96,12 +150,21 @@ class VoiceChat extends ChangeNotifier {
     await _leave();
     _room = code;
     _error = null;
+    _micError = null;
     if (code != null && available) await join();
     _notify();
   }
 
   /// Joins the current room's voice channel.
   Future<void> join() async {
+    _cancelRetry();
+    _retries = 0;
+    await _join(micOn: !joinMuted);
+  }
+
+  /// Connects, then turns the mic on when [micOn]. A mic that can't be
+  /// turned on leaves voice connected for listening, with [micError] set.
+  Future<void> _join({required bool micOn}) async {
     final room = _room;
     if (room == null || _session != null || _status == VoiceStatus.connecting) return;
     final generation = ++_generation;
@@ -113,7 +176,7 @@ class VoiceChat extends ChangeNotifier {
       final session = await _connect(
         url: grant.url,
         token: grant.token,
-        micEnabled: !joinMuted,
+        micEnabled: false,
         micDeviceId: micDeviceId,
         volumes: _effectiveVolumes,
         otherVolume: voiceVolume,
@@ -124,12 +187,18 @@ class VoiceChat extends ChangeNotifier {
       }
       _session = session;
       _changes = session.changes.listen((_) => _notify());
-      unawaited(session.dropped.then((_) => _onDropped(generation)));
+      unawaited(session.dropped.then((retry) => _onDropped(generation, session, retry: retry)));
       _status = VoiceStatus.connected;
+      _retries = 0;
+      final peer = _partyPeer;
+      if (peer != null) unawaited(session.setPartyPeer(peer).catchError((_) {}));
+      if (micOn) await _turnMicOn(session);
     } catch (e) {
       if (generation != _generation) return;
       _status = VoiceStatus.failed;
       _error = e is Exception ? _message(e) : '$e';
+      // A rejoin that fails tries again, until the delays run out.
+      if (_retries > 0) _scheduleRetry(micOn: micOn);
     }
     _notify();
   }
@@ -140,29 +209,73 @@ class VoiceChat extends ChangeNotifier {
     _notify();
   }
 
+  /// Mutes or unmutes. When the mic can't be turned on, [micError] says why.
   Future<void> setMic(bool enabled) async {
-    await _session?.setMicEnabled(enabled);
+    final session = _session;
+    if (session == null) return;
+    if (enabled) {
+      await _turnMicOn(session);
+    } else {
+      _micError = null;
+      await session.setMicEnabled(false);
+    }
     _notify();
   }
 
+  Future<void> _turnMicOn(VoiceSession session) async {
+    try {
+      await session.setMicEnabled(true);
+      _micError = null;
+    } catch (e) {
+      _micError = micErrorText(e);
+    }
+  }
+
   Future<void> _leave() async {
+    _cancelRetry();
+    _retries = 0;
     _generation++;
     final session = _session;
     _session = null;
     await _changes?.cancel();
     _changes = null;
     _status = VoiceStatus.off;
+    _micError = null;
     await session?.close();
   }
 
-  void _onDropped(int generation) {
+  void _onDropped(int generation, VoiceSession session, {required bool retry}) {
+    // Free the dropped connection's resources whatever happens next.
+    unawaited(session.close().catchError((_) {}));
     if (generation != _generation) return;
+    final micWasOn = session.micEnabled;
     _session = null;
     unawaited(_changes?.cancel());
     _changes = null;
     _status = VoiceStatus.failed;
     _error = 'Voice chat disconnected.';
+    if (retry) _scheduleRetry(micOn: micWasOn);
     _notify();
+  }
+
+  /// Rejoins after the next of [retryDelays], keeping the mic as it was.
+  void _scheduleRetry({required bool micOn}) {
+    _cancelRetry();
+    if (_disposed || _room == null || _retries >= retryDelays.length) {
+      _retries = 0;
+      return;
+    }
+    final delay = retryDelays[_retries++];
+    _error = 'Voice chat disconnected. Reconnecting…';
+    _retry = Timer(delay, () {
+      _retry = null;
+      unawaited(_join(micOn: micOn));
+    });
+  }
+
+  void _cancelRetry() {
+    _retry?.cancel();
+    _retry = null;
   }
 
   String _message(Exception e) {

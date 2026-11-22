@@ -114,7 +114,6 @@ class _WatchTogetherSheetState extends State<_WatchTogetherSheet> {
 
   Widget _inRoom(ThemeData theme, WatchTogether watch, WatchRoom room) {
     final voice = watch.voice;
-    final speaking = {for (final m in voice.members) m.name: m};
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -159,21 +158,7 @@ class _WatchTogetherSheetState extends State<_WatchTogetherSheet> {
           style: theme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 12),
-        for (final p in room.people)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(child: Text(p.name.isEmpty ? '?' : p.name.characters.first.toUpperCase())),
-            title: Text('${p.name}${p.peerId == room.state.peerId ? ' (you)' : ''}'),
-            subtitle: Text([if (p.host) 'Host', if (!p.connected) 'Reconnecting…', p.player.name].join(' · ')),
-            trailing: speaking.containsKey(p.name)
-                ? Icon(
-                    speaking[p.name]!.muted
-                        ? Icons.mic_off
-                        : (speaking[p.name]!.speaking ? Icons.graphic_eq : Icons.mic),
-                    color: speaking[p.name]!.speaking ? theme.colorScheme.primary : null,
-                  )
-                : null,
-          ),
+        for (final p in room.people) _person(theme, room, p, voice.memberForPeer(p.peerId, p.name)),
         const Divider(height: 24),
         Row(
           children: [
@@ -188,6 +173,19 @@ class _WatchTogetherSheetState extends State<_WatchTogetherSheet> {
     );
   }
 
+  Widget _person(ThemeData theme, WatchRoom room, owp.Participant p, VoiceMember? voice) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: CircleAvatar(child: Text(p.name.isEmpty ? '?' : p.name.characters.first.toUpperCase())),
+    title: Text('${p.name}${p.peerId == room.state.peerId ? ' (you)' : ''}'),
+    subtitle: Text([if (p.host) 'Host', if (!p.connected) 'Reconnecting…', p.player.name].join(' · ')),
+    trailing: voice == null
+        ? null
+        : Icon(
+            voice.muted ? Icons.mic_off : (voice.speaking ? Icons.graphic_eq : Icons.mic),
+            color: voice.speaking ? theme.colorScheme.primary : null,
+          ),
+  );
+
   String _matchText(WatchRoom room) => switch (room.state.match?.state) {
     null || owp.MatchState.searching => 'Finding your copy…',
     owp.MatchState.matched => 'Watching ${room.state.media?.title ?? ''} together.',
@@ -200,7 +198,8 @@ class _WatchTogetherSheetState extends State<_WatchTogetherSheet> {
     return switch (voice.status) {
       VoiceStatus.off => 'Not in voice chat.',
       VoiceStatus.connecting => 'Joining voice chat…',
-      VoiceStatus.connected => voice.micEnabled ? 'You can be heard.' : 'Muted. Tap the mic to talk.',
+      VoiceStatus.connected =>
+        voice.micError ?? (voice.micEnabled ? 'You can be heard.' : 'Muted. Tap the mic to talk.'),
       VoiceStatus.failed => voice.error ?? "Voice chat didn't connect.",
     };
   }

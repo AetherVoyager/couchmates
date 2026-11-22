@@ -117,6 +117,7 @@ class WatchTogether extends ChangeNotifier {
       _lastCode = code;
       unawaited(voice.roomChanged(code));
     }
+    unawaited(voice.setPartyPeer(room.state.peerId));
     _openChoice(room);
     notifyListeners();
   }

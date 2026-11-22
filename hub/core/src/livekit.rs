@@ -55,6 +55,8 @@ impl LiveKitConfig {
                     "canPublish": true,
                     "canSubscribe": true,
                     "canPublishData": false,
+                    // Lets the app share its watch party peer id as an attribute.
+                    "canUpdateOwnMetadata": true,
                     "canPublishSources": ["microphone"],
                 },
             }),
