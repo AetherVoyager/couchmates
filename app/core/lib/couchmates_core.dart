@@ -7,6 +7,7 @@
 /// - Stremio: [StremioClient] for the user's catalog (home rows, details,
 ///   episodes, streams), as Telegram-Stremio serves it, and [probeStream]
 ///   to list a file's audio and subtitle tracks before playing it.
+///   [fetchOnlineSubtitles] adds subtitles from Stremio's OpenSubtitles addon.
 /// - Session: [HubSession], the signed-in user, their config and catalog.
 /// - Library: [loadHomeRows] and [CatalogPager] for browsing, and
 ///   [ProgressStore] for where you stopped.
@@ -34,6 +35,7 @@ export 'src/social/presence.dart';
 export 'src/settings/track_choice.dart';
 export 'src/stremio/media_probe.dart';
 export 'src/stremio/models.dart';
+export 'src/stremio/online_subtitles.dart';
 export 'src/stremio/stream_details.dart';
 export 'src/stremio/stremio_client.dart';
 export 'src/voice/voice_chat.dart';

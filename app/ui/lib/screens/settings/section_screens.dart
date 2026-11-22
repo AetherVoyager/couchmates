@@ -113,6 +113,11 @@ class PlaybackSection extends StatelessWidget {
             ('off', 'Never (turn on by hand)'),
           ],
         ),
+        SwitchSetting(
+          setting: Settings.onlineSubtitles,
+          title: 'Find subtitles online',
+          subtitle: 'Adds subtitles from OpenSubtitles when the file has none in your language',
+        ),
         ChoiceSetting<int>(
           setting: Settings.subtitleSize,
           title: 'Subtitle size',

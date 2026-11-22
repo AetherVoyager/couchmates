@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
+import 'online_subtitles.dart';
 
 class StremioException implements Exception {
   const StremioException(this.message, {this.status});
@@ -116,6 +117,24 @@ class StremioClient {
   /// (such as "Limit Reached") the server sent instead.
   Future<StremioStreams> streams(String type, String id) async =>
       StremioStreams.fromJson(await _get('/stream/${_segment(type)}/${_segment(id)}.json', missingOk: true));
+
+  /// Subtitles for a movie id or an episode's `tt…:season:episode` id, from
+  /// a subtitles addon. [filename] and [videoSize] (bytes) help it rank the
+  /// files that fit this release first.
+  Future<List<OnlineSubtitle>> subtitles(String type, String id, {String? filename, int? videoSize}) async {
+    final extras = {'filename': ?filename, if (videoSize != null) 'videoSize': '$videoSize'}.entries
+        .where((e) => e.value.isNotEmpty)
+        .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    final json = await _get(
+      '/subtitles/${_segment(type)}/${_segment(id)}${extras.isEmpty ? '' : '/$extras'}.json',
+      missingOk: true,
+    );
+    return [
+      for (final s in (json['subtitles'] as List? ?? const []).whereType<Map<String, dynamic>>())
+        ?OnlineSubtitle.fromJson(s),
+    ];
+  }
 
   /// Searches every catalog that supports it, merged in catalog order
   /// without duplicates.
