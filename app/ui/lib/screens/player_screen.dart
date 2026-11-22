@@ -17,6 +17,9 @@ import 'media_info_panel.dart';
 
 const _window = MethodChannel('plezy/window');
 
+/// Stremio's OpenSubtitles addon, for subtitles the file doesn't have.
+final _openSubtitles = StremioClient(baseUrl: openSubtitlesAddon);
+
 /// Plays one [Playable] with mpv. In a watch party it shares the title (as
 /// host) or follows the room's choice, and play, pause and seek go through
 /// the room so everyone stays together.
@@ -61,6 +64,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   mpv.Tracks _tracks = const mpv.Tracks();
   mpv.TrackSelection _selection = const mpv.TrackSelection();
   String? _error;
+
+  /// Subtitles OpenSubtitles has for this title (null until they arrive),
+  /// the ones loaded into the player by URL, and the language to load one in
+  /// at start when the file has none the settings want.
+  List<OnlineSubtitle>? _online;
+  final _onlineAdded = <String>{};
+  String? _autoOnline;
+  bool _autoOnlineDone = false;
 
   /// The room the player is attached to, if any.
   WatchRoom? _attachedTo;
@@ -121,6 +132,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _watch.notices.stream.listen(_toast),
     ]);
     _open();
+    if (_settings.get(Settings.onlineSubtitles)) unawaited(_loadOnlineSubtitles());
     _scheduleHide();
     _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (_playing) unawaited(_saveProgress());
@@ -137,6 +149,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (scale != 1) await _player.setProperty('sub-scale', scale.toStringAsFixed(2));
     } catch (e) {
       if (mounted) setState(() => _error = "Couldn't open this stream.");
+    }
+  }
+
+  Future<void> _loadOnlineSubtitles() async {
+    final subs = await fetchOnlineSubtitles(_openSubtitles, _p);
+    if (!mounted) return;
+    setState(() => _online = subs);
+    _maybeAutoOnline();
+  }
+
+  /// Loads the best online subtitle in [_autoOnline] once both the file's
+  /// tracks and the online list are known.
+  void _maybeAutoOnline() {
+    final lang = _autoOnline, online = _online;
+    if (_autoOnlineDone || lang == null || online == null) return;
+    _autoOnlineDone = true;
+    final best = online.where((s) => normalizeLanguage(s.language) == lang).firstOrNull;
+    if (best != null) unawaited(_addOnline(best));
+  }
+
+  /// Loads [sub] into mpv as an external track and shows it.
+  Future<void> _addOnline(OnlineSubtitle sub) async {
+    if (!_onlineAdded.add(sub.url)) return;
+    setState(() {});
+    try {
+      await _player.command(['sub-add', sub.url, 'select', 'OpenSubtitles', sub.language]);
+    } catch (_) {
+      _onlineAdded.remove(sub.url);
+      if (mounted) setState(() {});
+      _toast("Couldn't load that subtitle.");
     }
   }
 
@@ -196,6 +238,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } else if (subId != null) {
       final sub = _tracks.subtitle.where((t) => t.id == subId).firstOrNull;
       if (sub != null) unawaited(_player.selectSubtitleTrack(sub));
+    }
+    if (_settings.get(Settings.onlineSubtitles)) {
+      _autoOnline = autoOnlineLanguage(
+        [
+          for (final t in _tracks.subtitle)
+            TrackInfo(id: t.id, language: t.language, title: t.title, forced: t.isForced),
+        ],
+        _settings,
+        audioLanguage: audioLanguage,
+      );
+      _maybeAutoOnline();
     }
   }
 
@@ -660,6 +713,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             selected: _selection.subtitle?.id == t.id,
                             onTap: () => _player.selectSubtitleTrack(t),
                           ),
+                        for (final (i, sub) in _onlineChoices.indexed)
+                          (
+                            label:
+                                '${TrackLabelBuilder.subtitleLabel(language: sub.language, index: i).primary} · OpenSubtitles',
+                            selected: false,
+                            onTap: () => _addOnline(sub),
+                          ),
                       ],
                     ),
                     IconButton(
@@ -681,6 +741,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ],
     );
   }
+
+  /// Online subtitles the menu offers: a few in the preferred languages,
+  /// minus the ones already loaded (those are listed with the file's tracks).
+  List<OnlineSubtitle> get _onlineChoices => [
+    for (final sub in pickOnlineSubtitles(_online ?? const [], onlineSubtitleLanguages(_settings)))
+      if (!_onlineAdded.contains(sub.url)) sub,
+  ];
 
   Widget _trackMenu({
     required IconData icon,

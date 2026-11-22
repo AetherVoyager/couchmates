@@ -79,6 +79,10 @@ abstract final class Settings {
   static const subtitleLanguages = Setting<String>('playback.subtitle_languages', '');
   static const subtitleMode = Setting<String>('playback.subtitle_mode', 'auto');
 
+  /// Offer subtitles from OpenSubtitles (Stremio's addon) in the player, and
+  /// load one when the file has none in the wanted language.
+  static const onlineSubtitles = Setting<bool>('playback.online_subtitles', true);
+
   /// Percent of the default subtitle size.
   static const subtitleSize = Setting<int>('playback.subtitle_size', 100, choices: [70, 85, 100, 120, 140, 170]);
   static const defaultVolume = Setting<int>('playback.volume', 100, choices: [25, 50, 75, 100]);
