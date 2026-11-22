@@ -89,7 +89,7 @@ class _HoverZoomState extends State<HoverZoom> {
       onTap: widget.onTap,
       onHover: _set,
       onFocusChange: _set,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       hoverColor: Colors.transparent,
       splashColor: Colors.white10,
       child: AnimatedScale(
@@ -130,13 +130,13 @@ class PosterCard extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             boxShadow: hovered
                 ? const [BoxShadow(color: Colors.black, blurRadius: 18, offset: Offset(0, 8))]
                 : const [],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(8),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -209,7 +209,7 @@ class LandscapeCard extends StatelessWidget {
             AspectRatio(
               aspectRatio: 16 / 9,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [

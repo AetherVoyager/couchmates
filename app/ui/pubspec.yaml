@@ -164,6 +164,7 @@ flutter:
   assets:
     - assets/couchmates.png
     - assets/licenses/SpatialAudioBridge.txt
+    - assets/licenses/BricolageGrotesque-OFL.txt
     - assets/trakt_circlemark.svg
     - assets/mal_mark.svg
     - assets/anilist_mark.svg
@@ -185,6 +186,17 @@ flutter:
   # Registered as UI font families so the Linux build, whose fontconfig may
   # lack CJK fonts, can fall back to the bundled subtitle fonts (mono_theme).
   fonts:
+    # Display face for headings (SIL OFL, assets/licenses/BricolageGrotesque-OFL.txt).
+    - family: Bricolage Grotesque
+      fonts:
+        - asset: assets/fonts/BricolageGrotesque-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/BricolageGrotesque-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BricolageGrotesque-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/BricolageGrotesque-ExtraBold.ttf
+          weight: 800
     - family: Go Noto Current
       fonts:
         - asset: assets/go-noto-current-regular.ttf

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui' show ImageFilter;
 
 import 'package:couchmates_core/couchmates_core.dart';
 import 'package:flutter/gestures.dart';
@@ -61,7 +62,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Pages visited before this one, for Back.
   final _history = <_Page>[];
-  bool? _collapsed;
+
+  /// Keeps the side pane open beside the page instead of folded over it.
+  bool _pinned = false;
   bool _refreshing = false;
 
   /// Picks the featured title; new on every load.
@@ -137,25 +140,25 @@ class _HomeScreenState extends State<HomeScreen> {
         return LayoutBuilder(
           builder: (context, box) {
             final narrow = box.maxWidth < 720;
-            final collapsed = _collapsed ?? box.maxWidth < 1100;
-            Widget pane(bool collapsed, {VoidCallback? onPicked}) => _SidePane(
+            Widget pane({required bool pinned, VoidCallback? onPin, VoidCallback? onPicked}) => _SidePane(
               rows: rows,
               page: _page,
-              collapsed: collapsed,
+              pinned: pinned,
               enabled: catalog != null,
               refreshing: _refreshing,
               onRefresh: _refreshing ? null : _refreshNow,
-              onToggle: narrow ? null : () => setState(() => _collapsed = !collapsed),
+              onTogglePin: onPin,
               onGo: (p) {
                 onPicked?.call();
                 _go(p);
               },
             );
-            final content = _Content(
+            Widget content(double inset) => _Content(
               page: _page,
               catalog: catalog,
               rows: snap,
               seed: _seed,
+              inset: inset,
               onRetry: _refresh,
               onRefresh: _refresh,
               onSeeAll: (row) => _go(_CatalogPage(row)),
@@ -185,29 +188,39 @@ class _HomeScreenState extends State<HomeScreen> {
             if (narrow) {
               return withBack(
                 Scaffold(
-                  appBar: AppBar(
-                    title: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.asset('assets/couchmates.png', width: 30, height: 30),
-                    ),
-                    centerTitle: true,
-                  ),
+                  appBar: AppBar(title: const _Logo(size: 30), centerTitle: true),
                   drawer: Builder(
                     builder: (context) => Drawer(
+                      width: _paneWidth,
                       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
-                      child: pane(false, onPicked: () => Navigator.of(context).pop()),
+                      child: pane(pinned: true, onPicked: () => Navigator.of(context).pop()),
                     ),
                   ),
-                  body: content,
+                  body: content(0),
                 ),
               );
             }
+            void togglePin() => setState(() => _pinned = !_pinned);
+            if (_pinned) {
+              return withBack(
+                Scaffold(
+                  body: Row(
+                    children: [
+                      pane(pinned: true, onPin: togglePin),
+                      Expanded(child: content(0)),
+                    ],
+                  ),
+                ),
+              );
+            }
+            // The rail floats over the page, so the home hero runs under it;
+            // the page keeps clear of its folded width.
             return withBack(
               Scaffold(
-                body: Row(
+                body: Stack(
                   children: [
-                    pane(collapsed),
-                    Expanded(child: content),
+                    Positioned.fill(child: content(_railWidth)),
+                    Positioned(left: 0, top: 0, bottom: 0, child: pane(pinned: false, onPin: togglePin)),
                   ],
                 ),
               ),
@@ -221,75 +234,152 @@ class _HomeScreenState extends State<HomeScreen> {
 
 // --- side pane ----------------------------------------------------------------
 
-const _paneWidth = 208.0;
-const _collapsedWidth = 64.0;
+/// Folded: icons only. Open: labels and the catalogue.
+const _railWidth = 76.0;
+const _paneWidth = 264.0;
 
-class _SidePane extends StatelessWidget {
+/// Where the icons sit, so they stay put while the pane opens.
+const _railInset = 16.0;
+const _iconBox = 44.0;
+const _labelStart = _railInset + _iconBox + 14;
+
+/// The app's navigation. Pinned, it stays open beside the page; otherwise it
+/// is a slim rail of icons over the page that opens while the mouse or the
+/// keyboard is on it.
+class _SidePane extends StatefulWidget {
   const _SidePane({
     required this.rows,
     required this.page,
-    required this.collapsed,
+    required this.pinned,
     required this.enabled,
     required this.refreshing,
     required this.onRefresh,
-    required this.onToggle,
+    required this.onTogglePin,
     required this.onGo,
   });
 
   final List<HomeRow> rows;
   final _Page page;
-  final bool collapsed;
+  final bool pinned;
   final bool enabled;
   final bool refreshing;
   final VoidCallback? onRefresh;
-  final VoidCallback? onToggle;
+
+  /// Null where pinning doesn't apply (the narrow window's drawer).
+  final VoidCallback? onTogglePin;
   final ValueChanged<_Page> onGo;
+
+  @override
+  State<_SidePane> createState() => _SidePaneState();
+}
+
+class _SidePaneState extends State<_SidePane> {
+  bool _hover = false;
+  bool _focus = false;
+  Timer? _opening;
+
+  bool get _open => widget.pinned || _hover || _focus;
+
+  void _setHover(bool hover) {
+    _opening?.cancel();
+    if (hover) {
+      // A short wait, so passing over the rail on the way somewhere doesn't
+      // open it.
+      _opening = Timer(const Duration(milliseconds: 140), () {
+        if (mounted) setState(() => _hover = true);
+      });
+    } else if (_hover) {
+      setState(() => _hover = false);
+    }
+  }
+
+  void _setFocus(bool focus) {
+    // Only keyboard focus opens it: a click leaves focus behind, which would
+    // keep it open after the mouse has gone.
+    final keyboard = FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    final open = focus && keyboard;
+    if (open != _focus) setState(() => _focus = open);
+  }
+
+  @override
+  void dispose() {
+    _opening?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final w = widget;
+    final open = _open;
+    final floating = open && !w.pinned;
     final inRoom = context.select<WatchTogether, bool>((w) => w.room?.inRoom ?? false);
     final listCount = context.select<Watchlist, int>((w) => w.items.length);
 
     // The catalogue, grouped by type: Movies, then Shows, in the addon's order.
     final byType = <String, List<HomeRow>>{};
-    for (final r in rows) {
+    for (final r in w.rows) {
       byType.putIfAbsent(r.catalog.type, () => []).add(r);
     }
-    final current = page is _CatalogPage ? _catalogKey((page as _CatalogPage).row.catalog) : null;
+    final page = w.page;
+    final current = page is _CatalogPage ? _catalogKey(page.row.catalog) : null;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      width: collapsed ? _collapsedWidth : _paneWidth,
-      color: theme.colorScheme.surfaceContainerLowest,
+    // Folded, a soft scrim keeps the icons readable over artwork; open, a
+    // solid panel. Both are gradients so the change animates.
+    final Gradient fill = open
+        ? LinearGradient(
+            colors: [
+              scheme.surfaceContainerLowest.withValues(alpha: w.pinned ? 1 : 0.94),
+              scheme.surfaceContainerLowest.withValues(alpha: w.pinned ? 1 : 0.9),
+            ],
+          )
+        : LinearGradient(colors: [scheme.surface.withValues(alpha: 0.72), scheme.surface.withValues(alpha: 0)]);
+
+    final body = SizedBox(
+      width: _paneWidth,
       child: SafeArea(
         right: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(collapsed ? 0 : 16, 16, collapsed ? 0 : 4, 16),
-              child: collapsed
-                  ? Center(
-                      child: Tooltip(
-                        message: 'Expand',
-                        child: InkWell(onTap: onToggle, borderRadius: BorderRadius.circular(8), child: _Logo(size: 32)),
-                      ),
-                    )
-                  : Row(
-                      children: [
-                        const _Logo(size: 32),
-                        const Spacer(),
-                        if (onToggle != null)
-                          IconButton(
-                            tooltip: 'Collapse',
-                            icon: const Icon(Icons.keyboard_double_arrow_left_rounded),
-                            color: theme.colorScheme.onSurfaceVariant,
-                            onPressed: onToggle,
-                          ),
-                      ],
+              padding: const EdgeInsets.fromLTRB(_railInset, 20, 10, 22),
+              child: Row(
+                children: [
+                  Tooltip(
+                    message: w.onTogglePin == null ? 'Couchmates' : (w.pinned ? 'Fold the menu' : 'Keep the menu open'),
+                    child: InkWell(
+                      onTap: w.onTogglePin,
+                      borderRadius: BorderRadius.circular(12),
+                      child: const _Logo(size: _iconBox),
                     ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _FadeLabel(
+                      visible: open,
+                      child: Text(
+                        'Couchmates',
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        style: theme.textTheme.titleLarge?.copyWith(fontSize: 21),
+                      ),
+                    ),
+                  ),
+                  if (w.onTogglePin != null)
+                    _FadeLabel(
+                      visible: open,
+                      child: IconButton(
+                        tooltip: w.pinned ? 'Fold the menu' : 'Keep the menu open',
+                        iconSize: 20,
+                        color: w.pinned ? scheme.primary : Cinema.faint,
+                        icon: Icon(w.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined),
+                        onPressed: w.onTogglePin,
+                      ),
+                    ),
+                ],
+              ),
             ),
             Expanded(
               child: ListView(
@@ -300,15 +390,15 @@ class _SidePane extends StatelessWidget {
                     selectedIcon: Icons.home_rounded,
                     label: 'Home',
                     selected: page is _HomePage,
-                    collapsed: collapsed,
-                    onTap: () => onGo(const _HomePage()),
+                    open: open,
+                    onTap: () => w.onGo(const _HomePage()),
                   ),
                   _PaneItem(
                     icon: Icons.search_rounded,
                     label: 'Search',
                     selected: page is _SearchPage,
-                    collapsed: collapsed,
-                    onTap: enabled ? () => onGo(const _SearchPage()) : null,
+                    open: open,
+                    onTap: w.enabled ? () => w.onGo(const _SearchPage()) : null,
                   ),
                   _PaneItem(
                     icon: Icons.bookmark_border_rounded,
@@ -316,8 +406,8 @@ class _SidePane extends StatelessWidget {
                     label: 'My list',
                     trailing: listCount > 0 ? '$listCount' : null,
                     selected: page is _MyListPage,
-                    collapsed: collapsed,
-                    onTap: () => onGo(const _MyListPage()),
+                    open: open,
+                    onTap: () => w.onGo(const _MyListPage()),
                   ),
                   _PaneItem(
                     icon: Icons.groups_outlined,
@@ -325,75 +415,115 @@ class _SidePane extends StatelessWidget {
                     label: 'Watch together',
                     badge: inRoom,
                     selected: false,
-                    collapsed: collapsed,
-                    onTap: enabled ? () => showWatchTogetherSheet(context) : null,
+                    open: open,
+                    onTap: w.enabled ? () => showWatchTogetherSheet(context) : null,
                   ),
                   if (byType.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    if (collapsed)
-                      const Padding(padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8), child: Divider())
-                    else
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(19, 12, 12, 6),
-                        child: Text(
-                          'CATALOGUE',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Cinema.faint,
-                            letterSpacing: 1.6,
-                            fontWeight: FontWeight.w700,
+                    const SizedBox(height: 14),
+                    // Folded, one icon stands for the catalogue: a tap opens
+                    // the menu (for touch, where nothing hovers).
+                    _PaneItem(
+                      icon: Icons.video_library_outlined,
+                      selectedIcon: Icons.video_library_rounded,
+                      label: 'Catalogue',
+                      heading: open,
+                      selected: !open && current != null,
+                      open: open,
+                      onTap: open ? null : w.onTogglePin,
+                    ),
+                    if (open)
+                      for (final MapEntry(key: type, value: list) in byType.entries) ...[
+                        if (byType.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(_labelStart, 10, 16, 4),
+                            child: Text(
+                              typeLabel(type),
+                              style: theme.textTheme.labelMedium?.copyWith(color: Cinema.faint),
+                            ),
                           ),
-                        ),
-                      ),
-                    for (final MapEntry(key: type, value: list) in byType.entries) ...[
-                      if (!collapsed && byType.length > 1)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(19, 10, 12, 2),
-                          child: Text(
-                            typeLabel(type),
-                            style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        for (final row in list)
+                          _CatalogItem(
+                            label: byType.length > 1 ? row.catalog.name : row.title,
+                            tooltip: row.title,
+                            selected: current == _catalogKey(row.catalog),
+                            onTap: () => w.onGo(_CatalogPage(row)),
                           ),
-                        ),
-                      for (final row in list)
-                        _PaneItem(
-                          icon: switch (type) {
-                            'movie' => Icons.movie_outlined,
-                            'series' => Icons.tv_rounded,
-                            _ => Icons.video_library_outlined,
-                          },
-                          label: byType.length > 1 ? row.catalog.name : row.title,
-                          tooltip: row.title,
-                          dense: true,
-                          selected: current == _catalogKey(row.catalog),
-                          collapsed: collapsed,
-                          onTap: () => onGo(_CatalogPage(row)),
-                        ),
-                    ],
+                      ],
                   ],
                 ],
               ),
             ),
-            const Divider(height: 1),
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: collapsed ? 0 : 8, vertical: 6),
-              child: collapsed
-                  ? Column(
-                      children: [
-                        _RefreshButton(refreshing: refreshing, onPressed: onRefresh),
-                        const ProfileButton(),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        const Expanded(child: ProfileButton(showName: true)),
-                        _RefreshButton(refreshing: refreshing, onPressed: onRefresh),
-                      ],
-                    ),
+              // Puts the 34 px avatar (inside the button's 6 px padding) under the icons.
+              padding: const EdgeInsets.fromLTRB(_railInset + (_iconBox - 34) / 2 - 6, 6, 10, 10),
+              child: Row(
+                children: [
+                  Expanded(child: ProfileButton(showName: open)),
+                  _FadeLabel(
+                    visible: open,
+                    child: _RefreshButton(refreshing: w.refreshing, onPressed: w.onRefresh),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
+
+    return MouseRegion(
+      onEnter: (_) => _setHover(true),
+      onExit: (_) => _setHover(false),
+      child: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onFocusChange: _setFocus,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          width: open ? _paneWidth : _railWidth,
+          decoration: BoxDecoration(
+            gradient: fill,
+            border: Border(
+              right: BorderSide(color: open ? scheme.outlineVariant.withValues(alpha: 0.7) : Colors.transparent),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: floating ? 0.55 : 0),
+                blurRadius: 48,
+                offset: const Offset(12, 0),
+              ),
+            ],
+          ),
+          child: ClipRect(
+            child: BackdropFilter(
+              enabled: floating,
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              // Laid out at the open width and clipped while folded, so
+              // nothing reflows as it opens.
+              child: OverflowBox(alignment: Alignment.topLeft, minWidth: _paneWidth, maxWidth: _paneWidth, child: body),
+            ),
+          ),
+        ),
+      ),
+    );
   }
+}
+
+/// Fades with the pane opening and folding.
+class _FadeLabel extends StatelessWidget {
+  const _FadeLabel({required this.visible, required this.child});
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: visible ? 1 : 0,
+    duration: Duration(milliseconds: visible ? 260 : 120),
+    curve: Curves.easeOut,
+    child: IgnorePointer(ignoring: !visible, child: child),
+  );
 }
 
 class _Logo extends StatelessWidget {
@@ -417,7 +547,7 @@ class _RefreshButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => IconButton(
     tooltip: 'Refresh',
-    color: Theme.of(context).colorScheme.onSurfaceVariant,
+    color: Cinema.faint,
     icon: refreshing
         ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
         : const Icon(Icons.refresh_rounded),
@@ -425,29 +555,31 @@ class _RefreshButton extends StatelessWidget {
   );
 }
 
+/// A destination: its icon in a rounded tile that lights up when selected,
+/// and the label beside it once the pane is open.
 class _PaneItem extends StatefulWidget {
   const _PaneItem({
     required this.icon,
     required this.label,
     required this.selected,
-    required this.collapsed,
+    required this.open,
     required this.onTap,
     this.selectedIcon,
-    this.tooltip,
     this.trailing,
     this.badge = false,
-    this.dense = false,
+    this.heading = false,
   });
 
   final IconData icon;
   final IconData? selectedIcon;
   final String label;
-  final String? tooltip;
   final String? trailing;
   final bool selected;
-  final bool collapsed;
+  final bool open;
   final bool badge;
-  final bool dense;
+
+  /// Shown as the heading of what follows, not as something to click.
+  final bool heading;
   final VoidCallback? onTap;
 
   @override
@@ -460,53 +592,150 @@ class _PaneItemState extends State<_PaneItem> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final w = widget;
-    final active = w.selected || _hover;
-    final color = w.onTap == null
+    final disabled = w.onTap == null && !w.heading;
+    final hover = _hover && w.onTap != null;
+    final Color iconColor = disabled
         ? Cinema.faint.withValues(alpha: 0.5)
-        : active
+        : w.selected
+        ? scheme.primary
+        : hover
         ? Colors.white
         : Cinema.muted;
-    Widget icon = Icon(w.selected ? (w.selectedIcon ?? w.icon) : w.icon, size: w.dense ? 20 : 22, color: color);
-    if (w.badge) icon = Badge(smallSize: 8, backgroundColor: theme.colorScheme.primary, child: icon);
-    final item = InkWell(
-      onTap: w.onTap,
-      onHover: (h) => setState(() => _hover = h),
-      child: Container(
-        height: w.dense ? 40 : 46,
-        padding: EdgeInsets.only(left: w.collapsed ? 0 : 16, right: 10),
-        decoration: BoxDecoration(
-          color: w.selected ? Colors.white.withValues(alpha: 0.06) : null,
-          border: Border(
-            left: BorderSide(color: w.selected ? theme.colorScheme.primary : Colors.transparent, width: 3),
-          ),
-        ),
-        child: w.collapsed
-            ? Center(child: icon)
-            : Row(
-                children: [
-                  icon,
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      w.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: (w.dense ? theme.textTheme.bodyMedium : theme.textTheme.titleSmall)?.copyWith(
-                        color: color,
-                        fontWeight: w.selected ? FontWeight.w700 : FontWeight.w500,
-                      ),
+    final Color labelColor = disabled
+        ? Cinema.faint.withValues(alpha: 0.5)
+        : w.selected || hover
+        ? Colors.white
+        : w.heading
+        ? Cinema.faint
+        : Cinema.muted;
+    Widget icon = Icon(w.selected ? (w.selectedIcon ?? w.icon) : w.icon, size: 22, color: iconColor);
+    if (w.badge) icon = Badge(smallSize: 8, backgroundColor: scheme.primary, child: icon);
+    final tile = AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      width: _iconBox,
+      height: _iconBox,
+      decoration: BoxDecoration(
+        color: w.selected
+            ? scheme.primary.withValues(alpha: 0.16)
+            : hover
+            ? Colors.white.withValues(alpha: 0.07)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(child: icon),
+    );
+    final item = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: InkWell(
+        onTap: w.onTap,
+        onHover: (h) => setState(() => _hover = h),
+        hoverColor: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.only(left: _railInset, right: 16),
+          child: Row(
+            children: [
+              tile,
+              const SizedBox(width: 14),
+              Expanded(
+                child: _FadeLabel(
+                  visible: w.open,
+                  child: Text(
+                    w.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: labelColor,
+                      fontWeight: w.selected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
-                  if (w.trailing != null)
-                    Text(w.trailing!, style: theme.textTheme.labelMedium?.copyWith(color: Cinema.faint)),
-                ],
+                ),
               ),
+              if (w.trailing != null)
+                _FadeLabel(
+                  visible: w.open,
+                  child: Text(w.trailing!, style: theme.textTheme.labelMedium?.copyWith(color: Cinema.faint)),
+                ),
+            ],
+          ),
+        ),
       ),
     );
-    return w.collapsed || w.tooltip != null
-        ? Tooltip(message: w.tooltip ?? w.label, preferBelow: false, child: item)
-        : item;
+    return Semantics(
+      label: w.label,
+      selected: w.selected,
+      button: w.onTap != null,
+      excludeSemantics: true,
+      child: item,
+    );
+  }
+}
+
+/// One catalog in the open pane: text only, lined up with the labels above.
+class _CatalogItem extends StatefulWidget {
+  const _CatalogItem({required this.label, required this.tooltip, required this.selected, required this.onTap});
+
+  final String label;
+  final String tooltip;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_CatalogItem> createState() => _CatalogItemState();
+}
+
+class _CatalogItemState extends State<_CatalogItem> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final w = widget;
+    return Tooltip(
+      message: w.tooltip,
+      waitDuration: const Duration(milliseconds: 900),
+      child: InkWell(
+        onTap: w.onTap,
+        onHover: (h) => setState(() => _hover = h),
+        hoverColor: Colors.transparent,
+        child: SizedBox(
+          height: 36,
+          child: Row(
+            children: [
+              // A short accent bar marks the open catalog.
+              SizedBox(
+                width: _labelStart,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    margin: const EdgeInsets.only(right: 10),
+                    width: 3,
+                    height: w.selected ? 18 : 0,
+                    decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  w.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: w.selected || _hover ? Colors.white : Cinema.muted,
+                    fontWeight: w.selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -518,12 +747,15 @@ class _Content extends StatelessWidget {
     required this.catalog,
     required this.rows,
     required this.seed,
+    required this.inset,
     required this.onRetry,
     required this.onRefresh,
     required this.onSeeAll,
     required this.onBack,
   });
 
+  /// The width the floating rail covers on the left.
+  final double inset;
   final _Page page;
   final StremioClient? catalog;
   final AsyncSnapshot<List<HomeRow>> rows;
@@ -548,7 +780,14 @@ class _Content extends StatelessWidget {
       );
     } else {
       body = switch (page) {
-        _HomePage() => _HomeFeed(rows: rows, seed: seed, onRetry: onRetry, onRefresh: onRefresh, onSeeAll: onSeeAll),
+        _HomePage() => _HomeFeed(
+          rows: rows,
+          seed: seed,
+          inset: inset,
+          onRetry: onRetry,
+          onRefresh: onRefresh,
+          onSeeAll: onSeeAll,
+        ),
         _SearchPage() => const SearchView(),
         _MyListPage() => const _MyListView(),
         _CatalogPage(:final row) => CatalogView(
@@ -560,37 +799,52 @@ class _Content extends StatelessWidget {
         ),
       };
     }
-    return Column(
-      children: [
-        if (updater.showBanner)
-          MaterialBanner(
-            leading: const Icon(Icons.system_update_alt),
-            content: Text('Couchmates ${updater.info!.latestVersion} is available.'),
-            actions: [
-              TextButton(onPressed: updater.dismiss, child: const Text('Later')),
-              FilledButton(onPressed: updater.install, child: const Text('Update now')),
+    final banners = <Widget>[
+      if (updater.showBanner)
+        MaterialBanner(
+          leading: const Icon(Icons.system_update_alt),
+          content: Text('Couchmates ${updater.info!.latestVersion} is available.'),
+          actions: [
+            TextButton(onPressed: updater.dismiss, child: const Text('Later')),
+            FilledButton(onPressed: updater.install, child: const Text('Update now')),
+          ],
+        ),
+      if (updater.progress != null)
+        MaterialBanner(
+          leading: const Icon(Icons.downloading),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Downloading the update… ${(updater.progress! * 100).round()}%'),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: updater.progress),
             ],
           ),
-        if (updater.progress != null)
-          MaterialBanner(
-            leading: const Icon(Icons.downloading),
-            content: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Downloading the update… ${(updater.progress! * 100).round()}%'),
-                const SizedBox(height: 8),
-                LinearProgressIndicator(value: updater.progress),
-              ],
-            ),
-            actions: const [SizedBox.shrink()],
+          actions: const [SizedBox.shrink()],
+        ),
+      if (session.problem != null)
+        MaterialBanner(
+          content: Text(session.problem!),
+          actions: [TextButton(onPressed: onRetry, child: const Text('Retry'))],
+        ),
+    ];
+    return Column(
+      children: [
+        for (final b in banners)
+          Padding(
+            padding: EdgeInsets.only(left: inset),
+            child: b,
           ),
-        if (session.problem != null)
-          MaterialBanner(
-            content: Text(session.problem!),
-            actions: [TextButton(onPressed: onRetry, child: const Text('Retry'))],
-          ),
-        Expanded(child: body),
+        // Home runs its hero under the rail; every other page keeps clear.
+        Expanded(
+          child: page is _HomePage && catalog != null
+              ? body
+              : Padding(
+                  padding: EdgeInsets.only(left: inset),
+                  child: body,
+                ),
+        ),
       ],
     );
   }
@@ -629,6 +883,7 @@ class _HomeFeed extends StatelessWidget {
   const _HomeFeed({
     required this.rows,
     required this.seed,
+    required this.inset,
     required this.onRetry,
     required this.onRefresh,
     required this.onSeeAll,
@@ -636,42 +891,60 @@ class _HomeFeed extends StatelessWidget {
 
   final AsyncSnapshot<List<HomeRow>> rows;
   final int seed;
+
+  /// The width the floating rail covers on the left.
+  final double inset;
   final Future<void> Function() onRetry;
   final Future<void> Function() onRefresh;
   final ValueChanged<HomeRow> onSeeAll;
 
   @override
   Widget build(BuildContext context) {
-    if (rows.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-    if (rows.hasError) return MessageView(icon: Icons.cloud_off, message: errorText(rows.error!), onRetry: onRetry);
+    Widget clear(Widget child) => Padding(
+      padding: EdgeInsets.only(left: inset),
+      child: child,
+    );
+    if (rows.connectionState != ConnectionState.done) return clear(const Center(child: CircularProgressIndicator()));
+    if (rows.hasError) {
+      return clear(MessageView(icon: Icons.cloud_off, message: errorText(rows.error!), onRetry: onRetry));
+    }
     final list = rows.data!;
     if (list.isEmpty) {
-      return MessageView(
-        icon: Icons.movie_outlined,
-        message:
-            "Nothing to show yet. If your admin has added movies or shows, they may not be shared with "
-            'your account: ask them to run "Check catalog" on your user in the Hub.',
-        onRetry: onRetry,
+      return clear(
+        MessageView(
+          icon: Icons.movie_outlined,
+          message:
+              "Nothing to show yet. If your admin has added movies or shows, they may not be shared with "
+              'your account: ask them to run "Check catalog" on your user in the Hub.',
+          onRetry: onRetry,
+        ),
       );
     }
-    // The featured title: one with a backdrop, picked at random per load.
-    final withArt = [for (final r in list) ...r.items.where((m) => m.background != null)];
-    final featured = withArt.isEmpty ? null : withArt[seed % withArt.length];
+    // The featured titles: a few with a backdrop, picked at random per load.
+    final seen = <String>{};
+    final withArt = [
+      for (final r in list)
+        for (final m in r.items)
+          if (m.background != null && seen.add(m.id)) m,
+    ]..shuffle(Random(seed));
+    final featured = withArt.take(_heroCount).toList();
     final continuing = context.watch<ProgressStore>().continueWatching;
     final saved = context.watch<Watchlist>().items;
+    final poster = posterWidthOf(context);
 
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        padding: const EdgeInsets.only(bottom: 40),
+        padding: const EdgeInsets.only(bottom: 48),
         children: [
-          if (featured != null) _Billboard(key: ValueKey(featured.id), item: featured) else const SizedBox(height: 20),
+          if (featured.isNotEmpty) _Hero(items: featured, inset: inset) else const SizedBox(height: 28),
           if (continuing.isNotEmpty)
             _Shelf(
               title: 'Continue watching',
+              inset: inset,
               itemCount: continuing.length,
-              itemWidth: posterWidthOf(context) * 1.9,
-              height: posterWidthOf(context) * 1.9 * 9 / 16 + 30,
+              itemWidth: poster * 1.9,
+              height: poster * 1.9 * 9 / 16 + 30,
               itemBuilder: (context, i, width) {
                 final p = continuing[i];
                 return LandscapeCard(meta: p.meta, width: width, progress: p.fraction, subtitle: p.videoTitle);
@@ -680,18 +953,20 @@ class _HomeFeed extends StatelessWidget {
           if (saved.isNotEmpty)
             _Shelf(
               title: 'My list',
+              inset: inset,
               itemCount: saved.length,
-              itemWidth: posterWidthOf(context),
-              height: posterWidthOf(context) / posterAspect,
+              itemWidth: poster,
+              height: poster / posterAspect,
               itemBuilder: (context, i, width) => PosterCard(meta: saved[i], width: width),
             ),
           for (final row in list)
             _Shelf(
               title: row.title,
+              inset: inset,
               onSeeAll: () => onSeeAll(row),
               itemCount: row.items.length,
-              itemWidth: posterWidthOf(context),
-              height: posterWidthOf(context) / posterAspect,
+              itemWidth: poster,
+              height: poster / posterAspect,
               itemBuilder: (context, i, width) => PosterCard(meta: row.items[i], width: width),
             ),
         ],
@@ -700,12 +975,159 @@ class _HomeFeed extends StatelessWidget {
   }
 }
 
+/// How many titles the hero rotates through, and how long each stays.
+const _heroCount = 6;
+const _heroDwell = Duration(seconds: 9);
+
+/// The top of home: a few featured titles, one at a time, cross-fading on
+/// their own. Hovering holds the current one; the bars at the bottom right
+/// show the time left and pick a title.
+class _Hero extends StatefulWidget {
+  const _Hero({required this.items, required this.inset});
+
+  final List<StremioMeta> items;
+  final double inset;
+
+  @override
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> with SingleTickerProviderStateMixin {
+  late final AnimationController _clock = AnimationController(vsync: this, duration: _heroDwell)
+    ..addStatusListener((s) {
+      if (s == AnimationStatus.completed) _show(_index + 1);
+    });
+  int _index = 0;
+  bool _hover = false;
+
+  bool get _rotates => widget.items.length > 1 && !MediaQuery.disableAnimationsOf(context);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_rotates && !_hover && !_clock.isAnimating) unawaited(_clock.forward());
+    if (!_rotates) _clock.stop();
+  }
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    super.dispose();
+  }
+
+  void _show(int i) {
+    setState(() => _index = i % widget.items.length);
+    _clock.value = 0;
+    if (_rotates && !_hover) unawaited(_clock.forward());
+  }
+
+  void _setHover(bool hover) {
+    _hover = hover;
+    if (hover) {
+      _clock.stop();
+      // Its Play and Details are the likeliest clicks: have the tracks ready.
+      prefetchTracks(context, widget.items[_index]);
+    } else if (_rotates) {
+      unawaited(_clock.forward());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final height = (size.height * 0.66).clamp(360.0, 700.0);
+    final item = widget.items[_index];
+    return MouseRegion(
+      onEnter: (_) => _setHover(true),
+      onExit: (_) => _setHover(false),
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 900),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+              child: _Billboard(key: ValueKey(item.id), item: item, inset: widget.inset),
+            ),
+            if (widget.items.length > 1)
+              Positioned(
+                right: pageGutter(context),
+                bottom: 44,
+                child: _HeroBars(count: widget.items.length, index: _index, clock: _clock, onPick: _show),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One bar per featured title; the current one fills as its time runs.
+class _HeroBars extends StatelessWidget {
+  const _HeroBars({required this.count, required this.index, required this.clock, required this.onPick});
+
+  final int count;
+  final int index;
+  final Animation<double> clock;
+  final ValueChanged<int> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < count; i++)
+          Semantics(
+            button: true,
+            selected: i == index,
+            label: 'Featured title ${i + 1} of $count',
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onPick(i),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 10),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    width: i == index ? 40 : 16,
+                    height: 4,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.28),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: i == index
+                        ? AnimatedBuilder(
+                            animation: clock,
+                            builder: (_, _) => FractionallySizedBox(
+                              alignment: Alignment.centerLeft,
+                              widthFactor: clock.isAnimating || clock.value > 0 ? clock.value : 1,
+                              child: const ColoredBox(color: Colors.white),
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// A big backdrop of one title with its logo, a few facts, the description,
-/// and Play and More info.
+/// and Play, Details and Watch together.
 class _Billboard extends StatefulWidget {
-  const _Billboard({super.key, required this.item});
+  const _Billboard({super.key, required this.item, required this.inset});
 
   final StremioMeta item;
+  final double inset;
 
   @override
   State<_Billboard> createState() => _BillboardState();
@@ -719,19 +1141,12 @@ class _BillboardState extends State<_Billboard> {
       .then<StremioMeta?>((m) => m, onError: (_) => null);
 
   @override
-  void initState() {
-    super.initState();
-    // Its Play and More info are the likeliest clicks: have the tracks ready.
-    WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? prefetchTracks(context, widget.item) : null);
-  }
-
-  @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final height = (size.height * 0.62).clamp(340.0, 640.0);
     final gutter = pageGutter(context);
     final theme = Theme.of(context);
     final bg = theme.colorScheme.surface;
+    final accent = theme.colorScheme.primary;
     return FutureBuilder<StremioMeta?>(
       future: _full,
       builder: (context, snap) {
@@ -740,54 +1155,84 @@ class _BillboardState extends State<_Billboard> {
           meta.name,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.displaySmall?.copyWith(
+          style: (size.width >= 1100 ? theme.textTheme.displayMedium : theme.textTheme.displaySmall)?.copyWith(
             color: Colors.white,
-            shadows: const [Shadow(blurRadius: 12, color: Colors.black54)],
+            height: 1.02,
+            shadows: const [Shadow(blurRadius: 16, color: Colors.black54)],
           ),
         );
-        final facts = [
-          ?(meta.releaseInfo ?? meta.year?.toString()),
-          ?meta.runtime,
-          if (meta.imdbRating != null) '★ ${meta.imdbRating!.toStringAsFixed(1)}',
-          ...meta.genres.take(3),
+        final year = meta.releaseInfo ?? meta.year?.toString();
+        final factStyle = theme.textTheme.titleSmall?.copyWith(color: Colors.white.withValues(alpha: 0.92));
+        final facts = <Widget>[
+          if (meta.imdbRating != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.22),
+                border: Border.all(color: accent.withValues(alpha: 0.55)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.star_rounded, size: 16, color: accent),
+                  const SizedBox(width: 4),
+                  Text(meta.imdbRating!.toStringAsFixed(1), style: factStyle?.copyWith(color: Colors.white)),
+                ],
+              ),
+            ),
+          if (year != null) Text(year, style: factStyle),
+          if (meta.runtime != null) Text(meta.runtime!, style: factStyle),
+          if (meta.genres.isNotEmpty)
+            Text(meta.genres.take(3).join(', '), style: factStyle?.copyWith(color: Cinema.muted)),
         ];
-        return SizedBox(
-          height: height,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              NetImage(meta.background, alignment: Alignment.topCenter),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    stops: const [0, 0.45, 0.85],
-                    colors: [bg.withValues(alpha: 0.92), bg.withValues(alpha: 0.45), Colors.transparent],
-                  ),
+        final textLeft = widget.inset + gutter;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            NetImage(meta.background, alignment: Alignment.topCenter),
+            // A night wash from the left for the text, and a fade into the
+            // page at the bottom.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  stops: const [0, 0.38, 0.75],
+                  colors: [bg.withValues(alpha: 0.94), bg.withValues(alpha: 0.55), Colors.transparent],
                 ),
               ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: const [0.55, 1],
-                    colors: [Colors.transparent, bg],
-                  ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0, 0.18, 0.6, 1],
+                  colors: [bg.withValues(alpha: 0.35), Colors.transparent, Colors.transparent, bg],
                 ),
               ),
-              Positioned(
-                left: gutter,
-                bottom: 36,
-                width: min(560, size.width * 0.6),
+            ),
+            Positioned(
+              left: textLeft,
+              bottom: 56,
+              width: min(600, (size.width - textLeft) * 0.62),
+              child: TweenAnimationBuilder<double>(
+                // Each new title's text settles in as its picture fades up.
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 700),
+                curve: Curves.easeOutCubic,
+                builder: (context, t, child) => Opacity(
+                  opacity: t,
+                  child: Transform.translate(offset: Offset(0, 16 * (1 - t)), child: child),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (meta.logo != null)
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 130, maxWidth: 440),
+                        constraints: const BoxConstraints(maxHeight: 140, maxWidth: 460),
                         child: Image.network(
                           meta.logo!,
                           fit: BoxFit.contain,
@@ -799,49 +1244,45 @@ class _BillboardState extends State<_Billboard> {
                     else
                       title,
                     if (facts.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      Text(
-                        facts.join('  ·  '),
-                        style: theme.textTheme.titleSmall?.copyWith(color: Colors.white.withValues(alpha: 0.9)),
-                      ),
+                      const SizedBox(height: 16),
+                      Wrap(spacing: 16, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: facts),
                     ],
                     if (meta.description != null) ...[
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       Text(
                         meta.description!,
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyLarge?.copyWith(
-                          color: Colors.white,
+                          color: Colors.white.withValues(alpha: 0.86),
+                          height: 1.45,
                           shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
                         ),
                       ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
                     Wrap(
                       spacing: 12,
                       runSpacing: 12,
                       children: [
                         PlayButton(onPressed: () => _play(context, meta)),
-                        FilledButton.icon(
+                        _GlassButton(
+                          icon: Icons.info_outline_rounded,
+                          label: 'Details',
                           onPressed: () => openDetails(context, meta),
-                          icon: const Icon(Icons.info_outline_rounded),
-                          label: const Text('More info'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.grey.withValues(alpha: 0.45),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(0, 48),
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            textStyle: theme.textTheme.titleMedium,
-                          ),
+                        ),
+                        _GlassButton(
+                          icon: Icons.groups_rounded,
+                          label: 'Watch together',
+                          onPressed: () => showWatchTogetherSheet(context),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
@@ -859,6 +1300,30 @@ class _BillboardState extends State<_Billboard> {
   }
 }
 
+/// A frosted secondary button for over artwork.
+class _GlassButton extends StatelessWidget {
+  const _GlassButton({required this.icon, required this.label, required this.onPressed});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => FilledButton.icon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 22),
+    label: Text(label),
+    style: FilledButton.styleFrom(
+      backgroundColor: Colors.white.withValues(alpha: 0.16),
+      foregroundColor: Colors.white,
+      side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+      minimumSize: const Size(0, 50),
+      padding: const EdgeInsets.fromLTRB(18, 0, 22, 0),
+      textStyle: Theme.of(context).textTheme.titleMedium,
+    ),
+  );
+}
+
 /// The white Play button.
 class PlayButton extends StatelessWidget {
   const PlayButton({super.key, required this.onPressed, this.label = 'Play'});
@@ -873,19 +1338,20 @@ class PlayButton extends StatelessWidget {
     label: Text(label),
     style: FilledButton.styleFrom(
       backgroundColor: Colors.white,
-      foregroundColor: Colors.black,
-      minimumSize: const Size(0, 48),
+      foregroundColor: Cinema.background,
+      minimumSize: const Size(0, 50),
       padding: const EdgeInsets.fromLTRB(18, 0, 26, 0),
       textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
     ),
   );
 }
 
-/// A titled row that scrolls sideways, with arrows at the edges under the
-/// mouse (a mouse wheel can't scroll it).
+/// A titled row that scrolls sideways, with round arrows at the ends under
+/// the mouse (a mouse wheel can't scroll it).
 class _Shelf extends StatefulWidget {
   const _Shelf({
     required this.title,
+    required this.inset,
     required this.itemCount,
     required this.itemWidth,
     required this.height,
@@ -894,6 +1360,7 @@ class _Shelf extends StatefulWidget {
   });
 
   final String title;
+  final double inset;
   final int itemCount;
   final double itemWidth;
   final double height;
@@ -945,6 +1412,7 @@ class _ShelfState extends State<_Shelf> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final gutter = pageGutter(context);
+    final left = widget.inset + gutter;
     // Room for the hover zoom and its shadow.
     const bleed = 14.0;
     return MouseRegion(
@@ -954,29 +1422,31 @@ class _ShelfState extends State<_Shelf> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(gutter, 18, gutter, 0),
+            padding: EdgeInsets.fromLTRB(left, 22, gutter, 2),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Flexible(
                   child: Text(
                     widget.title,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge?.copyWith(fontSize: 20),
+                    style: theme.textTheme.titleLarge?.copyWith(fontSize: 22),
                   ),
                 ),
-                if (widget.onSeeAll != null)
-                  AnimatedOpacity(
-                    opacity: _hover ? 1 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: TextButton(
-                      onPressed: widget.onSeeAll,
-                      style: TextButton.styleFrom(foregroundColor: theme.colorScheme.primary),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [Text('Explore all'), Icon(Icons.chevron_right_rounded, size: 18)],
-                      ),
+                if (widget.onSeeAll != null) ...[
+                  const SizedBox(width: 10),
+                  TextButton(
+                    onPressed: widget.onSeeAll,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _hover ? theme.colorScheme.primary : Cinema.faint,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [Text('See all'), Icon(Icons.chevron_right_rounded, size: 18)],
                     ),
                   ),
+                ],
               ],
             ),
           ),
@@ -988,13 +1458,13 @@ class _ShelfState extends State<_Shelf> {
                   controller: _scroll,
                   scrollDirection: Axis.horizontal,
                   clipBehavior: Clip.none,
-                  padding: EdgeInsets.symmetric(horizontal: gutter, vertical: bleed),
+                  padding: EdgeInsets.fromLTRB(left, bleed, gutter, bleed),
                   itemCount: widget.itemCount,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
                   itemBuilder: (context, i) => widget.itemBuilder(context, i, widget.itemWidth),
                 ),
-                if (!_atStart) _arrow(left: true, gutter: gutter, bleed: bleed),
-                if (!_atEnd) _arrow(left: false, gutter: gutter, bleed: bleed),
+                if (!_atStart) _arrow(left: true, inset: widget.inset + 8, top: bleed),
+                if (!_atEnd) _arrow(left: false, inset: 8, top: bleed),
               ],
             ),
           ),
@@ -1003,21 +1473,36 @@ class _ShelfState extends State<_Shelf> {
     );
   }
 
-  Widget _arrow({required bool left, required double gutter, required double bleed}) {
+  Widget _arrow({required bool left, required double inset, required double top}) {
     return Positioned(
-      left: left ? 0 : null,
-      right: left ? null : 0,
-      top: bleed,
-      bottom: bleed,
-      width: gutter,
-      child: AnimatedOpacity(
-        opacity: _hover ? 1 : 0,
-        duration: const Duration(milliseconds: 200),
-        child: Material(
-          color: Colors.black.withValues(alpha: 0.55),
-          child: InkWell(
-            onTap: () => _page(left ? -1 : 1),
-            child: Icon(left ? Icons.chevron_left_rounded : Icons.chevron_right_rounded, size: 36, color: Colors.white),
+      left: left ? inset : null,
+      right: left ? null : inset,
+      top: top,
+      bottom: top,
+      child: Center(
+        child: AnimatedOpacity(
+          opacity: _hover ? 1 : 0,
+          duration: const Duration(milliseconds: 200),
+          child: IgnorePointer(
+            ignoring: !_hover,
+            child: Material(
+              color: Cinema.background.withValues(alpha: 0.78),
+              shape: CircleBorder(side: BorderSide(color: Colors.white.withValues(alpha: 0.2))),
+              clipBehavior: Clip.antiAlias,
+              elevation: 6,
+              shadowColor: Colors.black,
+              child: InkWell(
+                onTap: () => _page(left ? -1 : 1),
+                child: SizedBox.square(
+                  dimension: 46,
+                  child: Icon(
+                    left ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
+                    size: 30,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),

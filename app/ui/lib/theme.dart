@@ -1,10 +1,10 @@
 import 'package:couchmates_core/couchmates_core.dart';
 import 'package:flutter/material.dart';
 
-/// Accent colors offered in Appearance.
+/// Accent colors offered in Appearance. Periwinkle is the logo's colour.
 const accentChoices = <(String, int)>[
-  ('Red', 0xFFE50914),
   ('Periwinkle', 0xFF7C9CFF),
+  ('Red', 0xFFE50914),
   ('Teal', 0xFF26A69A),
   ('Coral', 0xFFFF7A59),
   ('Amber', 0xFFFFB300),
@@ -13,46 +13,57 @@ const accentChoices = <(String, int)>[
   ('Lime', 0xFF8BC34A),
 ];
 
-/// The cinema palette: near-black surfaces in a few steps of grey, so artwork
-/// carries the colour.
+/// The display face for headings and titles; body text stays the system font.
+const displayFont = 'Bricolage Grotesque';
+
+/// The night palette: indigo-black surfaces taken from the logo, in a few
+/// steps, so artwork carries the colour.
 abstract final class Cinema {
-  static const background = Color(0xFF141414);
-  static const pane = Color(0xFF0C0C0C);
-  static const card = Color(0xFF1F1F1F);
-  static const raised = Color(0xFF2A2A2A);
-  static const muted = Color(0xFFB3B3B3);
-  static const faint = Color(0xFF808080);
+  static const background = Color(0xFF0D0E18);
+  static const pane = Color(0xFF090A12);
+  static const card = Color(0xFF181A2B);
+  static const raised = Color(0xFF242740);
+  static const muted = Color(0xFFAEB2CC);
+  static const faint = Color(0xFF737896);
 }
 
-ThemeData couchmatesTheme({required Brightness brightness, int accent = 0xFFE50914, bool black = false}) {
+ThemeData couchmatesTheme({required Brightness brightness, int accent = 0xFF7C9CFF, bool black = false}) {
   final dark = brightness == Brightness.dark;
   final seeded = ColorScheme.fromSeed(seedColor: Color(accent), brightness: brightness);
   final bg = black ? Colors.black : Cinema.background;
+  final onAccent = ThemeData.estimateBrightnessForColor(Color(accent)) == Brightness.dark
+      ? Colors.white
+      : const Color(0xFF0D0E18);
   final scheme = dark
       ? seeded.copyWith(
           // The exact accent, not a tone of it: a red should stay red.
           primary: Color(accent),
-          onPrimary: Colors.white,
+          onPrimary: onAccent,
           surface: bg,
           onSurface: Colors.white,
           onSurfaceVariant: Cinema.muted,
           surfaceContainerLowest: black ? Colors.black : Cinema.pane,
-          surfaceContainerLow: const Color(0xFF181818),
+          surfaceContainerLow: const Color(0xFF121323),
           surfaceContainer: Cinema.card,
-          surfaceContainerHigh: const Color(0xFF262626),
+          surfaceContainerHigh: const Color(0xFF1E2034),
           surfaceContainerHighest: Cinema.raised,
-          outline: const Color(0xFF4D4D4D),
-          outlineVariant: const Color(0xFF333333),
+          outline: const Color(0xFF4A4E6C),
+          outlineVariant: const Color(0xFF2B2E47),
         )
       : seeded;
   final base = ThemeData(colorScheme: scheme, useMaterial3: true, brightness: brightness);
+  TextStyle? display(TextStyle? t, FontWeight w, [double spacing = 0]) =>
+      t?.copyWith(fontFamily: displayFont, fontWeight: w, letterSpacing: spacing);
   final text = base.textTheme.copyWith(
-    displaySmall: base.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
-    headlineMedium: base.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
-    headlineSmall: base.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-    titleLarge: base.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+    displayMedium: display(base.textTheme.displayMedium, FontWeight.w800, -1.2),
+    displaySmall: display(base.textTheme.displaySmall, FontWeight.w800, -0.8),
+    headlineMedium: display(base.textTheme.headlineMedium, FontWeight.w700, -0.4),
+    headlineSmall: display(base.textTheme.headlineSmall, FontWeight.w700, -0.2),
+    titleLarge: display(base.textTheme.titleLarge, FontWeight.w700, -0.2),
     titleMedium: base.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
   );
+  final panel = dark ? const Color(0xFF161828) : null;
+  final rounded = RoundedRectangleBorder(borderRadius: BorderRadius.circular(10));
   return base.copyWith(
     scaffoldBackgroundColor: scheme.surface,
     canvasColor: scheme.surface,
@@ -62,33 +73,19 @@ ThemeData couchmatesTheme({required Brightness brightness, int accent = 0xFFE509
       scrolledUnderElevation: 0,
       titleTextStyle: text.titleLarge?.copyWith(color: scheme.onSurface),
     ),
-    cardTheme: CardThemeData(
-      color: scheme.surfaceContainer,
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
-    ),
-    popupMenuTheme: PopupMenuThemeData(
-      color: dark ? const Color(0xFF1C1C1C) : null,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-    ),
+    cardTheme: CardThemeData(color: scheme.surfaceContainer, elevation: 0, shape: rounded),
+    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(shape: rounded)),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(shape: rounded)),
+    popupMenuTheme: PopupMenuThemeData(color: panel, shape: rounded),
     menuTheme: MenuThemeData(
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(dark ? const Color(0xFF1C1C1C) : null),
-        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
-      ),
+      style: MenuStyle(backgroundColor: WidgetStatePropertyAll(panel), shape: WidgetStatePropertyAll(rounded)),
     ),
-    dialogTheme: DialogThemeData(backgroundColor: dark ? const Color(0xFF181818) : null),
-    bottomSheetTheme: BottomSheetThemeData(backgroundColor: dark ? const Color(0xFF181818) : null),
+    dialogTheme: DialogThemeData(backgroundColor: panel),
+    bottomSheetTheme: BottomSheetThemeData(backgroundColor: panel),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     tooltipTheme: TooltipThemeData(
       waitDuration: const Duration(milliseconds: 500),
-      decoration: BoxDecoration(color: const Color(0xFF2F2F2F), borderRadius: BorderRadius.circular(4)),
+      decoration: BoxDecoration(color: const Color(0xFF2A2D48), borderRadius: BorderRadius.circular(6)),
       textStyle: const TextStyle(color: Colors.white, fontSize: 12),
     ),
     inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),

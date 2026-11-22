@@ -58,7 +58,7 @@ enum SubtitleMode {
 abstract final class Settings {
   // Appearance
   static const theme = Setting<String>('appearance.theme', 'dark');
-  static const accent = Setting<int>('appearance.accent', 0xFFE50914);
+  static const accent = Setting<int>('appearance.accent', 0xFF7C9CFF);
   static const posterSize = Setting<String>('appearance.poster_size', 'medium');
 
   // Friends
