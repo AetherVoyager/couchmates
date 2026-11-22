@@ -66,7 +66,10 @@ Lost the authenticator phone? Clear it, then sign in with the password and set i
 npx wrangler d1 execute couchmates-hub --remote --command "DELETE FROM settings WHERE key LIKE 'totp%'; DELETE FROM admin_sessions;"
 ```
 
-Migrations: `0001` the base tables, `0002` usernames and passwords plus admin 2FA, `0003` tracker links.
+Migrations: `0001` the base tables, `0002` usernames and passwords plus admin 2FA, `0003` tracker links, `0004`
+presence and join requests, `0005` profile pictures, `0006` shared file tracks.
+
+Every secret, where it comes from and where it's kept: [`docs/secrets.md`](../docs/secrets.md).
 
 Secrets persist across deploys. To change one, run `npx wrangler secret put ADMIN_PASSWORD`. Changing
 `HUB_SECRET` makes every secret saved in Settings unreadable (Telegram-Stremio password, LiveKit secret, GitHub

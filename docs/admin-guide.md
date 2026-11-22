@@ -15,7 +15,8 @@ then sign in with the password and set it up again.
 
 ## Settings
 
-Everything here is tested before it's saved, and secrets are stored encrypted.
+Everything here is tested before it's saved, and secrets are stored encrypted. Where to get each key, and the
+Hub's own secrets: [secrets.md](secrets.md).
 
 | Card | What to enter | Needed for |
 |---|---|---|

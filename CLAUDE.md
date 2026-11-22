@@ -51,9 +51,13 @@ see the docstring of `seed_local.py`). Restarting `fake_servers.py` forgets its 
 
 ## Rules that bit before
 
-- **Never print or commit secrets.** Cloudflare credentials are User env vars: read them inside the command with
-  PowerShell `[Environment]::GetEnvironmentVariable('CLOUDFLARE_API_TOKEN','User')` and
-  `...('CLOUDFLARE_ACCOUNT_ID','User')`. The admin password is in `hub/admin-password.local.txt` (git-ignored).
+- **Never print or commit secrets.** Where each one lives is in `docs/secrets.md`. The ones a session needs:
+  - **Cloudflare** (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`): Windows **User** environment variables on this
+    machine, not files and not in the process environment by default. Load them inside the same PowerShell command
+    that uses them: `$env:CLOUDFLARE_API_TOKEN = [Environment]::GetEnvironmentVariable('CLOUDFLARE_API_TOKEN','User')`,
+    the same for `CLOUDFLARE_ACCOUNT_ID`, and `$env:CI = '1'` so wrangler doesn't prompt. Never echo them.
+  - **GitHub:** the `gh` CLI is already signed in; use it for releases, runs and the API.
+  - **Hub admin password:** `hub/admin-password.local.txt` (git-ignored). `hub/.dev.vars` has local test values.
   Don't ask the user to paste tokens into chat. Never enter real credentials into the live Hub.
 - **Hub secrets are sealed** with `HUB_SECRET`: any new secret setting must be added to `SECRET_KEYS` in
   `hub/core/src/store.rs`. Check it landed. An edit that missed this once left a secret in plain text.
