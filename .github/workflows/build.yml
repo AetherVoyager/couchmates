@@ -1,0 +1,157 @@
+name: Build
+
+# Tests everything and builds the Windows app when a version tag (v0.2.1) is
+# pushed, then publishes it as a release. Can also be started by hand from
+# the Actions tab, which builds without releasing. Android joins once the
+# Android build is ready.
+
+on:
+  # Builds cost CI minutes (Windows runners count double on private repos),
+  # so only version tags build. Run it by hand from the Actions tab when you
+  # want a build without releasing; tests run locally before every push.
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The patched Windows engine (app/ui/windows/tool/install-patched-engine.ps1)
+  # is built for exactly this Flutter release.
+  FLUTTER_VERSION: "3.47.1"
+
+jobs:
+  rust:
+    name: Core and Hub tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  app-tests:
+    name: App tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          # No lockfile hash in the key: a tag's run can only read caches saved
+          # on main, and each release changes the lockfile, so a hashed key
+          # never matched. pub get fetches whatever changed since.
+          pub-cache-key: "flutter-pub-:os:-:channel:-:version:-:arch:"
+      - name: App Core
+        working-directory: app/core
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+      - name: App UI
+        working-directory: app/ui
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter analyze
+          flutter test
+
+  # Starts with the tests rather than after them: the release still waits for
+  # all three, so a failing test never publishes.
+  windows:
+    name: Windows build
+    runs-on: windows-latest
+    env:
+      # Some git dependencies have paths longer than Windows' 260-character limit.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: core.longpaths
+      GIT_CONFIG_VALUE_0: "true"
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: app/ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache native dependencies (libmpv)
+        uses: actions/cache@v4
+        with:
+          path: app/ui/build/windows/x64/_deps
+          key: windows-native-x64-${{ hashFiles('app/ui/windows/CMakeLists.txt', 'app/ui/mpv-build.lock.json') }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+          # No lockfile hash in the key: a tag's run can only read caches saved
+          # on main, and each release changes the lockfile, so a hashed key
+          # never matched. pub get fetches whatever changed since.
+          pub-cache-key: "flutter-pub-:os:-:channel:-:version:-:arch:"
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Install the patched Flutter engine
+        run: |
+          flutter precache --windows
+          .\windows\tool\install-patched-engine.ps1
+
+      # A v1.2.3 tag builds version 1.2.3, so the app's own version (which it
+      # sends when checking for updates) matches the release.
+      - name: Build
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $version = $env:GITHUB_REF_NAME.Substring(1) }
+          flutter build windows --release --build-name $version --build-number $env:GITHUB_RUN_NUMBER
+
+      - name: Check the build
+        run: |
+          $dir = "build/windows/x64/runner/Release"
+          foreach ($f in "couchmates.exe", "flutter_windows.dll", "libmpv-2.dll", "data/app.so") {
+            if (-not (Test-Path "$dir/$f")) { throw "Missing from the build: $f" }
+          }
+          Get-ChildItem $dir -Recurse -Include *.pdb, *.lib, *.exp | Remove-Item
+
+      # One setup .exe (Inno Setup) plus a portable .7z of the same folder.
+      - name: Package
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $version = $env:GITHUB_REF_NAME.Substring(1) }
+          .\windows\build-installer.ps1 -X64BuildDir "build\windows\x64\runner\Release" -Version $version
+          foreach ($f in "couchmates-windows-setup.exe", "couchmates-windows-x64-portable.7z") {
+            if (-not (Test-Path $f)) { throw "Packaging didn't produce $f" }
+            Move-Item $f "$env:GITHUB_WORKSPACE/$f"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couchmates-windows-x64
+          path: |
+            couchmates-windows-setup.exe
+            couchmates-windows-x64-portable.7z
+
+  # A version tag (v0.1.0) publishes a lasting release.
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [rust, app-tests, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: couchmates-windows-x64
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            couchmates-windows-setup.exe
+            couchmates-windows-x64-portable.7z
+          generate_release_notes: true

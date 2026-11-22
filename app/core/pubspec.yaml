@@ -1,0 +1,22 @@
+name: couchmates_core
+description: >-
+  App Core: the Couchmates app's logic without any UI. Talks to the Hub, holds
+  the API shapes from the shared Core (../../core), and runs voice sessions.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  image: ^4.12.0
+  livekit_client: ^2.14.0
+  flutter_webrtc: ^1.6.3
+  openwatchparty: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

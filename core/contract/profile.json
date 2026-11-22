@@ -1,0 +1,24 @@
+{
+  "user": {
+    "id": "0123456789abcdef",
+    "name": "Alice",
+    "username": "alice",
+    "photo": "/api/app/photos/0123456789abcdef?v=1795280000"
+  },
+  "devices": [
+    {
+      "id": "fedcba9876543210",
+      "name": "Couchmates on LIVING-ROOM",
+      "signed_in_at": 1795200000,
+      "last_seen": 1795280000,
+      "current": true
+    },
+    {
+      "id": "aaaabbbbccccdddd",
+      "name": "Couchmates on Pixel 8",
+      "signed_in_at": 1795100000,
+      "last_seen": 1795150000,
+      "current": false
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+[package]
+name = "couchmates-hub"
+description = "The Hub's Cloudflare Worker: routing, admin handlers and the hourly job."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+couchmates-hub-core.workspace = true
+couchmates-hub-ui.workspace = true
+maud.workspace = true
+serde_json.workspace = true
+worker.workspace = true

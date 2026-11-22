@@ -1,0 +1,21 @@
+name = "couchmates-hub"
+main = "worker/build/index.js"
+compatibility_date = "2026-11-20"
+
+[build]
+command = "worker-build --release"
+cwd = "worker"
+watch_dir = ["core/src", "ui/src", "worker/src", "../core/src"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "couchmates-hub"
+database_id = "464fadb5-5cd2-4fcc-b980-d2063ed81ae5"
+migrations_dir = "migrations"
+
+[triggers]
+# Hourly usage snapshots and cleanup.
+crons = ["7 * * * *"]
+
+[observability]
+enabled = true

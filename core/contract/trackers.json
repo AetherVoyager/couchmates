@@ -1,0 +1,16 @@
+{
+  "trackers": [
+    {
+      "service": "trakt",
+      "available": true,
+      "linked": true,
+      "username": "alice"
+    },
+    {
+      "service": "simkl",
+      "available": false,
+      "linked": false,
+      "username": null
+    }
+  ]
+}

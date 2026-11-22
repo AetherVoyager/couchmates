@@ -1,0 +1,9 @@
+{
+  "user": { "id": "0123456789abcdef", "name": "Alice", "username": "alice" },
+  "device": { "id": "fedcba9876543210", "name": "Living room PC" },
+  "addon": {
+    "base_url": "https://tg.example.com/stremio/abc123",
+    "manifest_url": "https://tg.example.com/stremio/abc123/manifest.json"
+  },
+  "voice": { "available": true }
+}

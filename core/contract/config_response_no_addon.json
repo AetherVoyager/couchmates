@@ -1,0 +1,6 @@
+{
+  "user": { "id": "0123456789abcdef", "name": "Alice", "username": null },
+  "device": { "id": "fedcba9876543210", "name": "Couchmates app" },
+  "addon": null,
+  "voice": { "available": false }
+}

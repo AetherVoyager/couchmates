@@ -1,0 +1,11 @@
+[package]
+name = "couchmates-hub-ui"
+description = "Hub UI: the admin dashboard pages."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+couchmates-hub-core.workspace = true
+maud.workspace = true
+serde_json.workspace = true

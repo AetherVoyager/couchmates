@@ -1,0 +1,72 @@
+{
+  "friends": [
+    {
+      "person": {
+        "id": "1111222233334444",
+        "name": "Bob",
+        "photo": "/api/app/photos/1111222233334444?v=1795270000"
+      },
+      "online": true,
+      "last_seen": 1795280000,
+      "watching": {
+        "title": "Inception",
+        "meta_type": "movie",
+        "meta_id": "tt1375666",
+        "paused": false,
+        "in_party": true,
+        "since": 1795279000
+      }
+    },
+    {
+      "person": {
+        "id": "5555666677778888",
+        "name": "Carol"
+      },
+      "online": true,
+      "last_seen": 1795280010,
+      "watching": {
+        "title": "Severance",
+        "episode": "S1 E3 · In Perpetuity",
+        "meta_type": "series",
+        "meta_id": "tt11280740",
+        "paused": true,
+        "in_party": false,
+        "since": 1795278000
+      }
+    },
+    {
+      "person": {
+        "id": "9999aaaabbbbcccc",
+        "name": "Dave"
+      },
+      "online": false,
+      "last_seen": 1795200000,
+      "watching": null
+    }
+  ],
+  "requests": [
+    {
+      "id": "abcdef0123456789",
+      "incoming": true,
+      "person": {
+        "id": "5555666677778888",
+        "name": "Carol"
+      },
+      "title": "Severance",
+      "status": "pending",
+      "created_at": 1795280000
+    },
+    {
+      "id": "0123456789abcdef",
+      "incoming": false,
+      "person": {
+        "id": "1111222233334444",
+        "name": "Bob"
+      },
+      "title": "Inception",
+      "status": "accepted",
+      "room": "K7MQ2X",
+      "created_at": 1795279990
+    }
+  ]
+}

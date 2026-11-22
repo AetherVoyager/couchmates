@@ -1,0 +1,8 @@
+{
+  "tracks": [
+    {"kind": "video", "index": 1, "codec": "HEVC", "width": 3840, "height": 2160, "default": true, "forced": false},
+    {"kind": "audio", "index": 1, "codec": "E-AC3", "language": "mal", "name": "Malayalam 5.1", "channels": 6, "default": true, "forced": false},
+    {"kind": "audio", "index": 2, "codec": "AAC", "language": "eng", "channels": 2, "default": false, "forced": false},
+    {"kind": "subtitle", "index": 1, "codec": "SRT", "language": "eng", "default": false, "forced": true}
+  ]
+}

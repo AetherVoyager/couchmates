@@ -1,0 +1,2 @@
+ADMIN_PASSWORD=choose-a-long-password
+HUB_SECRET=64-hex-chars-from-a-random-generator

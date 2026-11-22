@@ -1,0 +1,22 @@
+{
+  "usernames": [
+    { "input": " Alice.B ", "expect": "alice.b" },
+    { "input": "bob_2-x", "expect": "bob_2-x" },
+    { "input": "ab", "expect": null },
+    { "input": "a b c", "expect": null },
+    { "input": "émile", "expect": null },
+    { "input": "abcdefghijklmnopqrstuvwxyz0123456", "expect": null }
+  ],
+  "passwords": [
+    { "input": "short", "ok": false },
+    { "input": "1234567", "ok": false },
+    { "input": "12345678", "ok": true },
+    { "input": "long enough", "ok": true }
+  ],
+  "voice_rooms": [
+    { "input": "abc-123", "expect": "couchmates-ABC123" },
+    { "input": "ROOM", "expect": "couchmates-ROOM" },
+    { "input": "a", "expect": null },
+    { "input": "abcdefghijklmnopq", "expect": null }
+  ]
+}
