@@ -65,6 +65,8 @@ class StremioManifest {
     required this.catalogs,
     required this.resources,
     required this.types,
+    this.idPrefixes,
+    this.resourceScopes = const {},
   });
 
   final String id;
@@ -76,7 +78,25 @@ class StremioManifest {
   final List<String> resources;
   final List<String> types;
 
+  /// The id prefixes it answers for (`tt`, `kitsu:`), or null for any.
+  final List<String>? idPrefixes;
+
+  /// Resources given as objects narrow the types and prefixes they answer
+  /// for: `{name: (types, idPrefixes)}`, each null when not narrowed.
+  final Map<String, ({List<String>? types, List<String>? idPrefixes})> resourceScopes;
+
   bool hasResource(String name) => resources.contains(name);
+
+  /// Whether it offers [resource] for this [type] and [id], by the rules
+  /// Stremio uses to pick which addons to ask.
+  bool handles(String resource, String type, String id) {
+    if (!hasResource(resource)) return false;
+    final scope = resourceScopes[resource];
+    final types = scope?.types ?? (this.types.isEmpty ? null : this.types);
+    if (types != null && !types.contains(type)) return false;
+    final prefixes = scope?.idPrefixes ?? idPrefixes;
+    return prefixes == null || prefixes.any(id.startsWith);
+  }
 
   factory StremioManifest.fromJson(_Json j) => StremioManifest(
     id: j['id'] as String? ?? '',
@@ -89,6 +109,15 @@ class StremioManifest {
         if (r is String) r else if (r is _Json && r['name'] is String) r['name'] as String,
     ],
     types: _strings(j['types']),
+    idPrefixes: j['idPrefixes'] is List ? _strings(j['idPrefixes']) : null,
+    resourceScopes: {
+      for (final r in _objects(j['resources']))
+        if (r['name'] is String)
+          r['name'] as String: (
+            types: r['types'] is List ? _strings(r['types']) : null,
+            idPrefixes: r['idPrefixes'] is List ? _strings(r['idPrefixes']) : null,
+          ),
+    },
   );
 }
 
@@ -252,9 +281,14 @@ class StremioStream {
     this.sizeBytes,
     this.bingeGroup,
     this.headers = const {},
+    this.source,
   });
 
   final String url;
+
+  /// The add-on it came from, for streams that aren't from the user's own
+  /// catalog.
+  final String? source;
 
   /// Short label, often the quality (`1080p`).
   final String? name;
@@ -276,14 +310,16 @@ class StremioStream {
   /// (`infoHash`) and external links, and the notices Telegram-Stremio sends
   /// as streams ("Plan Expired", "Limit Reached", a donation link). Those are
   /// told apart by having no size and no binge group; see [StremioNotice].
-  static StremioStream? fromJson(_Json j) {
+  /// Other add-ons send no such notices, so with [strict] off any http(s)
+  /// stream counts, and [source] names the add-on.
+  static StremioStream? fromJson(_Json j, {bool strict = true, String? source}) {
     final url = _str(j['url']);
     final scheme = url == null ? null : Uri.tryParse(url)?.scheme;
     if (scheme != 'http' && scheme != 'https') return null;
     final hints = j['behaviorHints'] is _Json ? j['behaviorHints'] as _Json : const <String, dynamic>{};
     final size = _int(j['size_bytes']) ?? _int(hints['videoSize']);
     final bingeGroup = _str(hints['bingeGroup']);
-    if (size == null && bingeGroup == null) return null;
+    if (strict && size == null && bingeGroup == null) return null;
     final proxy = hints['proxyHeaders'] is _Json ? hints['proxyHeaders'] as _Json : const <String, dynamic>{};
     final request = proxy['request'] is _Json ? proxy['request'] as _Json : const <String, dynamic>{};
     return StremioStream(
@@ -293,6 +329,7 @@ class StremioStream {
       filename: _str(hints['filename']),
       sizeBytes: size,
       bingeGroup: bingeGroup,
+      source: source,
       headers: {
         for (final e in request.entries)
           if (e.value is String) e.key: e.value as String,
@@ -317,17 +354,46 @@ class StremioNotice {
   }
 }
 
+/// A place to watch a title outside the app, such as a streaming service
+/// (a stream's `externalUrl`).
+class StremioLink {
+  const StremioLink({required this.name, required this.url, this.title, this.source});
+
+  final String name;
+  final String? title;
+  final Uri url;
+  final String? source;
+
+  static StremioLink? fromJson(_Json j, {String? source}) {
+    final url = Uri.tryParse(_str(j['externalUrl']) ?? '');
+    if (url == null || (url.scheme != 'http' && url.scheme != 'https')) return null;
+    return StremioLink(
+      name: _str(j['name']) ?? url.host,
+      title: _str(j['title']) ?? _str(j['description']),
+      url: url,
+      source: source,
+    );
+  }
+}
+
 class StremioStreams {
-  const StremioStreams({required this.streams, required this.notices});
+  const StremioStreams({required this.streams, required this.notices, this.links = const []});
 
   final List<StremioStream> streams;
   final List<StremioNotice> notices;
 
-  factory StremioStreams.fromJson(_Json j) {
+  /// Where else to watch it. Only from add-ons other than the user's own
+  /// catalog, whose external links are donation pages.
+  final List<StremioLink> links;
+
+  /// [strict] is for the user's own catalog (Telegram-Stremio); see
+  /// [StremioStream.fromJson].
+  factory StremioStreams.fromJson(_Json j, {bool strict = true, String? source}) {
     final items = (j['streams'] as List? ?? const []).whereType<_Json>().toList();
     return StremioStreams(
-      streams: items.map(StremioStream.fromJson).whereType<StremioStream>().toList(),
-      notices: items.map(StremioNotice.fromJson).whereType<StremioNotice>().toList(),
+      streams: [for (final i in items) ?StremioStream.fromJson(i, strict: strict, source: source)],
+      notices: strict ? items.map(StremioNotice.fromJson).whereType<StremioNotice>().toList() : const [],
+      links: strict ? const [] : [for (final i in items) ?StremioLink.fromJson(i, source: source)],
     );
   }
 }

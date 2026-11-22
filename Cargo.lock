@@ -148,6 +148,7 @@ dependencies = [
  "aes-gcm",
  "base64",
  "couchmates-core",
+ "futures-util",
  "getrandom",
  "hex",
  "hmac",

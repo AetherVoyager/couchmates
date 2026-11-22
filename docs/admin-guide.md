@@ -48,6 +48,20 @@ On a user's page:
   titles not public, a wrong server address, or a rejected token.
 - **Access:** disable (stops playback now) or enable; delete.
 
+## Add-ons
+
+**Add-ons** adds public Stremio add-ons to the app, after your Telegram-Stremio catalog. Paste an add-on's
+`https://…/manifest.json` (or `stremio://…`) link, or use one of the suggested ones. Their catalogs become home rows
+after yours, and their details, streams, subtitles and "watch elsewhere" links are merged with your server's. The app
+calls them directly; changes reach apps when they next start.
+
+Each add-on is checked when you add it, and again with **Check again**. The check reads the manifest and tries a few
+catalogs, a details page, streams and subtitles for a sample title. It marks each one **Works**, **Partly** or
+**Won't work**, and says why. For example, it flags torrent streams (the app doesn't play them), add-ons that use their
+own ids instead of IMDb ids (they won't match your library or watch parties), and add-ons that need configuring first.
+An add-on where nothing works is added turned off. **Move up / down** sets the order of rows and which add-on gets the
+first say on details. Links to configured add-ons can hold keys, so the Hub stores them encrypted.
+
 ## Overview
 
 Users and active devices, live streams, the library, Telegram bot health, data used per user (with a 7-day chart),

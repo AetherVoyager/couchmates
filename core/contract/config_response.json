@@ -5,5 +5,9 @@
     "base_url": "https://tg.example.com/stremio/abc123",
     "manifest_url": "https://tg.example.com/stremio/abc123/manifest.json"
   },
+  "addons": [
+    { "id": "a1b2c3d4e5f60718", "name": "Cinemeta", "base_url": "https://v3-cinemeta.strem.io" },
+    { "id": "0f1e2d3c4b5a6978", "name": "OpenSubtitles v3", "base_url": "https://opensubtitles-v3.strem.io" }
+  ],
   "voice": { "available": true }
 }

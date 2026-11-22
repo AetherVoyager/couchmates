@@ -2,7 +2,7 @@
 //! in `couchmates_core::api`, which documents each call.
 
 use couchmates_core::api::{
-    AddonInfo, AppConfig, DeviceInfo, DeviceSignOut, FileTrack, FileTracks, FileTracksUpload, LoginRequest,
+    AddonInfo, AppConfig, DeviceInfo, DeviceSignOut, ExtraAddon, FileTrack, FileTracks, FileTracksUpload, LoginRequest,
     LoginResponse, OkResponse, PasswordChangeRequest, Profile, ProfilePhotoUpload, ProfileUpdate, ScrobbleRequest,
     SignedInDevice, TrackerLinkPoll, TrackerLinkStart, TrackerRequest, TrackerStatus, TrackersResponse, UpdateDownload,
     UpdateDownloadRequest, UpdateInfo, UserInfo, VoiceInfo, VoiceTokenRequest, VoiceTokenResponse,
@@ -10,6 +10,7 @@ use couchmates_core::api::{
 use couchmates_core::rules::room_for_watch_code;
 use worker::{Request, Response, Result};
 
+use crate::addons;
 use crate::auth::{hash_password, normalize_username, password_problem, verify_password};
 use crate::crypto::random_token;
 use crate::livekit::LiveKitConfig;
@@ -130,6 +131,13 @@ pub async fn config(req: Request, store: &Store) -> Result<Response> {
         user: user_info(&user),
         device: DeviceInfo { id: device.id, name: device.name },
         addon,
+        addons: store
+            .addons()
+            .await?
+            .into_iter()
+            .filter(|a| a.enabled)
+            .map(|a| ExtraAddon { base_url: addons::base_url(&a.manifest_url).to_string(), id: a.id, name: a.name })
+            .collect(),
         voice: VoiceInfo { available: LiveKitConfig::load(store).await?.is_some() },
     };
     web::json(&config, 200)

@@ -108,20 +108,46 @@ class AddonInfo {
   Json toJson() => {'base_url': baseUrl, 'manifest_url': manifestUrl};
 }
 
+/// A public Stremio add-on the admin turned on in the Hub.
+class ExtraAddon {
+  const ExtraAddon({required this.id, required this.name, required this.baseUrl});
+
+  final String id;
+  final String name;
+
+  /// `<baseUrl>/manifest.json`, `/catalog/…` and so on.
+  final String baseUrl;
+
+  factory ExtraAddon.fromJson(Json j) =>
+      ExtraAddon(id: j['id'] as String, name: j['name'] as String, baseUrl: j['base_url'] as String);
+
+  Json toJson() => {'id': id, 'name': name, 'base_url': baseUrl};
+}
+
 class AppConfig {
-  const AppConfig({required this.user, required this.device, required this.addon, required this.voiceAvailable});
+  const AppConfig({
+    required this.user,
+    required this.device,
+    required this.addon,
+    required this.voiceAvailable,
+    this.addons = const [],
+  });
 
   final UserInfo user;
   final DeviceInfo device;
 
   /// The user's catalog. Null until the admin connects Telegram-Stremio.
   final AddonInfo? addon;
+
+  /// Public add-ons, in order, asked after [addon].
+  final List<ExtraAddon> addons;
   final bool voiceAvailable;
 
   factory AppConfig.fromJson(Json j) => AppConfig(
     user: UserInfo.fromJson(j['user'] as Json),
     device: DeviceInfo.fromJson(j['device'] as Json),
     addon: j['addon'] == null ? null : AddonInfo.fromJson(j['addon'] as Json),
+    addons: [for (final a in (j['addons'] as List? ?? const [])) ExtraAddon.fromJson(a as Json)],
     voiceAvailable: (j['voice'] as Json)['available'] as bool,
   );
 
@@ -129,6 +155,7 @@ class AppConfig {
     'user': user.toJson(),
     'device': device.toJson(),
     'addon': addon?.toJson(),
+    if (addons.isNotEmpty) 'addons': [for (final a in addons) a.toJson()],
     'voice': {'available': voiceAvailable},
   };
 }

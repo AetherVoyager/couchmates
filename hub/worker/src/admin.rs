@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use couchmates_hub_core::addons::{self, Report};
 use couchmates_hub_core::auth::{
     generated_password, hash_password, new_totp_secret, normalize_username, otpauth_uri, password_problem, qr_svg,
     verify_totp,
@@ -650,5 +651,112 @@ pub async fn save_tmdb(mut req: Request, store: &Store) -> Result<Response> {
             settings_page(&req, store, Some(Flash::Ok("TMDB works. Saved: titles now show cast photos.".into()))).await
         }
         Err(e) => settings_page(&req, store, Some(Flash::Bad(format!("Not saved: {e}.")))).await,
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Add-ons
+
+pub async fn addons_page(req: &Request, store: &Store, flash: Option<Flash>) -> Result<Response> {
+    let flash = flash.or_else(|| web::flash_from_query(req));
+    let rows = store.addons().await?;
+    let now = now();
+    let parsed: Vec<(Report, Value)> = rows
+        .iter()
+        .map(|a| {
+            let report = serde_json::from_str(&a.report)
+                .unwrap_or_else(|_| addons::unreadable("No saved check. Check it again."));
+            (report, serde_json::from_str(&a.manifest).unwrap_or(Value::Null))
+        })
+        .collect();
+    let views: Vec<ui::addons::Addon> = rows
+        .iter()
+        .zip(&parsed)
+        .map(|(a, (report, manifest))| ui::addons::Addon {
+            id: &a.id,
+            name: &a.name,
+            version: manifest.get("version").and_then(Value::as_str).unwrap_or(""),
+            description: manifest.get("description").and_then(Value::as_str).filter(|d| !d.is_empty()),
+            manifest_url: &a.manifest_url,
+            enabled: a.enabled,
+            report,
+            checked: ui::layout::ago(now, a.checked_at),
+        })
+        .collect();
+    let suggestions: Vec<&ui::addons::Suggestion> =
+        ui::addons::SUGGESTIONS.iter().filter(|s| !rows.iter().any(|a| a.manifest_url == s.manifest_url)).collect();
+    page(ui::addons::page(&views, &suggestions, flash.as_ref()))
+}
+
+/// Add-ons → "Check and add": reads the manifest, runs the check, and adds
+/// it, turned on unless nothing in it works with the app.
+pub async fn add_addon(mut req: Request, store: &Store) -> Result<Response> {
+    let typed = req.form_data().await?.get_field("url").unwrap_or_default();
+    let Some(url) = addons::normalize_manifest_url(&typed) else {
+        return addons_page(&req, store, Some(Flash::Bad("Paste the add-on's https://…/manifest.json link.".into())))
+            .await;
+    };
+    if store.addon_exists(&url).await? {
+        return addons_page(&req, store, Some(Flash::Bad("That add-on is already on the list.".into()))).await;
+    }
+    let manifest = match addons::fetch_manifest(&url).await {
+        Ok(m) => m,
+        Err(why) => return addons_page(&req, store, Some(Flash::Bad(format!("Not added. {why}")))).await,
+    };
+    let report = addons::check(&url, &manifest).await;
+    let name = addons::manifest_facts(&manifest).map(|m| m.name).unwrap_or_else(|| "Add-on".into());
+    let enabled = report.verdict != addons::Level::Bad;
+    let report_json = serde_json::to_string(&report).unwrap_or_default();
+    store.add_addon(&url, &name, &manifest.to_string(), &report_json, enabled).await?;
+    let flash = if enabled {
+        Flash::Ok(format!("Added {name}. {}", report.summary))
+    } else {
+        Flash::Bad(format!("Added {name}, but it's off: {} See the check below.", report.summary))
+    };
+    addons_page(&req, store, Some(flash)).await
+}
+
+pub async fn addon_action(req: Request, store: &Store, id: &str, action: &str) -> Result<Response> {
+    let Some(addon) = store.addon(id).await? else {
+        return web::redirect_with("/addons", false, "That add-on is gone.");
+    };
+    match action {
+        "enable" | "disable" => {
+            store.set_addon_enabled(id, action == "enable").await?;
+            let state = if action == "enable" { "on" } else { "off" };
+            web::redirect_with(
+                "/addons",
+                true,
+                &format!("{} is {state}. Apps pick this up when they next start.", addon.name),
+            )
+        }
+        "up" | "down" => {
+            store.move_addon(id, action == "up").await?;
+            web::redirect("/addons")
+        }
+        "delete" => {
+            store.delete_addon(id).await?;
+            web::redirect_with("/addons", true, &format!("Removed {}.", addon.name))
+        }
+        "check" => {
+            let (manifest, report) = match addons::fetch_manifest(&addon.manifest_url).await {
+                Ok(m) => {
+                    let report = addons::check(&addon.manifest_url, &m).await;
+                    (m.to_string(), report)
+                }
+                // Keep the last manifest read; the report says why this one failed.
+                Err(why) => (addon.manifest.clone(), addons::unreadable(&why)),
+            };
+            let name = serde_json::from_str::<Value>(&manifest)
+                .ok()
+                .and_then(|m| addons::manifest_facts(&m))
+                .map(|m| m.name)
+                .unwrap_or(addon.name.clone());
+            store.save_addon_check(id, &name, &manifest, &serde_json::to_string(&report).unwrap_or_default()).await?;
+            let ok = report.verdict != addons::Level::Bad;
+            addons_page(&req, store, Some(if ok { Flash::Ok(report.summary) } else { Flash::Bad(report.summary) }))
+                .await
+        }
+        _ => web::redirect("/addons"),
     }
 }

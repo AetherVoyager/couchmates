@@ -17,7 +17,8 @@ import 'media_info_panel.dart';
 
 const _window = MethodChannel('plezy/window');
 
-/// Stremio's OpenSubtitles addon, for subtitles the file doesn't have.
+/// Stremio's OpenSubtitles addon, for subtitles the file doesn't have when
+/// the catalog isn't an [AddonSet] (which has its own subtitle add-ons).
 final _openSubtitles = StremioClient(baseUrl: openSubtitlesAddon);
 
 /// Plays one [Playable] with mpv. In a watch party it shares the title (as
@@ -153,7 +154,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _loadOnlineSubtitles() async {
-    final subs = await fetchOnlineSubtitles(_openSubtitles, _p);
+    final catalog = context.read<HubSession>().catalog;
+    final subs = await fetchOnlineSubtitles(catalog is AddonSet ? catalog : _openSubtitles, _p);
     if (!mounted) return;
     setState(() => _online = subs);
     _maybeAutoOnline();
@@ -174,7 +176,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!_onlineAdded.add(sub.url)) return;
     setState(() {});
     try {
-      await _player.command(['sub-add', sub.url, 'select', 'OpenSubtitles', sub.language]);
+      await _player.command(['sub-add', sub.url, 'select', 'Online', sub.language]);
     } catch (_) {
       _onlineAdded.remove(sub.url);
       if (mounted) setState(() {});
@@ -716,7 +718,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         for (final (i, sub) in _onlineChoices.indexed)
                           (
                             label:
-                                '${TrackLabelBuilder.subtitleLabel(language: sub.language, index: i).primary} · OpenSubtitles',
+                                '${TrackLabelBuilder.subtitleLabel(language: sub.language, index: i).primary} · online',
                             selected: false,
                             onTap: () => _addOnline(sub),
                           ),

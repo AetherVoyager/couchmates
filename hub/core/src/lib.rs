@@ -1,5 +1,7 @@
 //! Hub Core: everything the Hub does apart from drawing pages.
 //!
+//! - [`addons`]: public Stremio add-ons from the dashboard, and their
+//!   compatibility check.
 //! - [`store`]: the D1 database (settings, admin sessions, users, devices,
 //!   usage history), with secrets sealed by [`crypto::Sealer`].
 //! - [`auth`]: admin authenticator codes (TOTP) and app password hashing.
@@ -15,6 +17,7 @@
 //! - [`usage`]: data use per day.
 //! - [`web`]: request and response helpers.
 
+pub mod addons;
 pub mod api;
 pub mod auth;
 pub mod catalog_check;

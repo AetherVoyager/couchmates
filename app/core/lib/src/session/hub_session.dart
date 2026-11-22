@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 import '../hub/api.dart';
 import '../hub/hub_client.dart';
 import '../social/photo.dart';
+import '../stremio/addon_set.dart';
 import '../stremio/models.dart';
+import '../stremio/online_subtitles.dart';
 import '../stremio/stremio_client.dart';
 
 /// What's kept between launches: the Hub address and this device's token.
@@ -68,7 +70,8 @@ class HubSession extends ChangeNotifier {
 
   StremioClient? _catalog;
 
-  /// The user's catalog, once the config says where it is.
+  /// The user's catalog with the Hub's public add-ons (an [AddonSet]), once
+  /// the config says where they are.
   StremioClient? get catalog => _catalog;
 
   /// The last problem worth showing, such as the Hub being unreachable.
@@ -261,13 +264,39 @@ class HubSession extends ChangeNotifier {
     return hub;
   }
 
+  /// What the catalog is built from, to rebuild it only when that changes.
+  static String _sources(AppConfig? c) =>
+      [c?.addon?.baseUrl ?? '', for (final a in c?.addons ?? const <ExtraAddon>[]) '${a.id}=${a.baseUrl}'].join(' ');
+
   void _applyConfig(AppConfig config) {
-    final changed = _config?.addon?.baseUrl != config.addon?.baseUrl;
+    final changed = _sources(_config) != _sources(config);
     _config = config;
     if (changed) {
       _catalog?.close();
       final addon = config.addon;
-      _catalog = addon == null ? null : StremioClient(baseUrl: addon.baseUrl, httpClient: _httpClient());
+      _catalog = addon == null && config.addons.isEmpty
+          ? null
+          : AddonSet(
+              primary: addon == null ? null : StremioClient(baseUrl: addon.baseUrl, httpClient: _httpClient()),
+              extras: [
+                for (final a in config.addons)
+                  ExtraSource(
+                    id: a.id,
+                    name: a.name,
+                    client: StremioClient(
+                      baseUrl: a.baseUrl,
+                      httpClient: _httpClient(),
+                      name: a.name,
+                      strictStreams: false,
+                    ),
+                  ),
+              ],
+              fallbackSubtitles: StremioClient(
+                baseUrl: openSubtitlesAddon,
+                httpClient: _httpClient(),
+                name: 'OpenSubtitles',
+              ),
+            );
     }
   }
 

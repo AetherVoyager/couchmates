@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:couchmates_core/couchmates_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../watch_together/watch_together.dart';
 import '../widgets/poster.dart';
@@ -52,6 +53,10 @@ Future<void> playTitle(
     return;
   }
   if (!context.mounted) return;
+  if (result.streams.isEmpty && result.links.isNotEmpty) {
+    await _pickLink(context, result.links);
+    return;
+  }
   if (result.streams.isEmpty) {
     final notice = result.notices.firstOrNull;
     messenger.showSnackBar(
@@ -115,6 +120,7 @@ Future<StremioStream?> _pickStream(BuildContext context, List<StremioStream> str
                 title: Text(s.label),
                 subtitle: Text(
                   [
+                    ?s.source,
                     ?s.title?.split('\n').skip(1).join('  '),
                     if (s.sizeBytes != null) _size(s.sizeBytes!),
                   ].where((t) => t.isNotEmpty).join('  ·  '),
@@ -122,6 +128,47 @@ Future<StremioStream?> _pickStream(BuildContext context, List<StremioStream> str
                   overflow: TextOverflow.ellipsis,
                 ),
                 onTap: () => Navigator.of(context).pop(s),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Nothing plays in the app, but add-ons know where else to watch it.
+Future<void> _pickLink(BuildContext context, List<StremioLink> links) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) => SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 4),
+              child: Text('Watch elsewhere', style: TextStyle(fontSize: 18)),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text('There\'s no copy to play here. These open in your browser or their app.'),
+            ),
+            for (final l in links)
+              ListTile(
+                leading: const Icon(Icons.open_in_new),
+                title: Text(l.name),
+                subtitle: Text(
+                  [?l.title?.replaceAll('\n', '  '), ?l.source].join('  ·  '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  unawaited(launchUrl(l.url, mode: LaunchMode.externalApplication));
+                },
               ),
           ],
         ),

@@ -14,6 +14,7 @@ couchmates-hub-ui = { path = "hub/ui" }
 
 aes-gcm = "0.11.1"
 base64 = "0.23.1"
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await-macro"] }
 getrandom = { version = "0.4.3", features = ["wasm_js"] }
 hex = "0.4.3"
 hmac = "0.13.0"

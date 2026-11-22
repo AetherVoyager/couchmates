@@ -90,6 +90,39 @@ pub struct PresenceRow {
     pub photo_version: Option<i64>,
 }
 
+/// A public Stremio add-on from the Add-ons page, with its URL opened.
+#[derive(Debug, Clone)]
+pub struct AddonRow {
+    pub id: String,
+    pub manifest_url: String,
+    pub name: String,
+    pub position: i64,
+    pub enabled: bool,
+    /// The manifest JSON as last read.
+    pub manifest: String,
+    /// The compatibility check ([`crate::addons::Report`]) as JSON.
+    pub report: String,
+    pub checked_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AddonDbRow {
+    id: String,
+    url_enc: String,
+    name: String,
+    position: i64,
+    enabled: i64,
+    manifest: String,
+    report: String,
+    checked_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AddonIdRow {
+    #[allow(dead_code)]
+    id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct IdRow {
     id: i64,
@@ -620,6 +653,107 @@ impl Store {
             &[s(key_hash), s(tracks_json), n(now() as f64)],
         )
         .await
+    }
+
+    // -------------------------------------------------------------------------
+    // Add-ons
+
+    fn open_addon(&self, r: AddonDbRow) -> Option<AddonRow> {
+        Some(AddonRow {
+            manifest_url: self.sealer.open(&r.url_enc)?,
+            id: r.id,
+            name: r.name,
+            position: r.position,
+            enabled: r.enabled != 0,
+            manifest: r.manifest,
+            report: r.report,
+            checked_at: r.checked_at,
+        })
+    }
+
+    /// Every add-on, in the order the app uses them. One whose URL can't be
+    /// opened (HUB_SECRET changed) is left out.
+    pub async fn addons(&self) -> Result<Vec<AddonRow>> {
+        let rows: Vec<AddonDbRow> = self.all("SELECT * FROM addons ORDER BY position, created_at", &[]).await?;
+        Ok(rows.into_iter().filter_map(|r| self.open_addon(r)).collect())
+    }
+
+    pub async fn addon(&self, id: &str) -> Result<Option<AddonRow>> {
+        let row: Option<AddonDbRow> = self.first("SELECT * FROM addons WHERE id = ?1", &[s(id)]).await?;
+        Ok(row.and_then(|r| self.open_addon(r)))
+    }
+
+    pub async fn addon_exists(&self, manifest_url: &str) -> Result<bool> {
+        let row: Option<AddonIdRow> =
+            self.first("SELECT id FROM addons WHERE url_hash = ?1", &[s(&sha256_hex(manifest_url))]).await?;
+        Ok(row.is_some())
+    }
+
+    /// Adds an add-on at the end of the list.
+    pub async fn add_addon(
+        &self,
+        manifest_url: &str,
+        name: &str,
+        manifest: &str,
+        report: &str,
+        enabled: bool,
+    ) -> Result<String> {
+        let id = random_id();
+        let now = now();
+        self.run(
+            "INSERT INTO addons (id, url_enc, url_hash, name, position, enabled, manifest, report, checked_at, created_at) \
+             VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(position), 0) + 1 FROM addons), ?5, ?6, ?7, ?8, ?8)",
+            &[
+                s(&id),
+                s(&self.sealer.seal(manifest_url)),
+                s(&sha256_hex(manifest_url)),
+                s(name),
+                n(if enabled { 1.0 } else { 0.0 }),
+                s(manifest),
+                s(report),
+                n(now as f64),
+            ],
+        )
+        .await?;
+        Ok(id)
+    }
+
+    /// Saves a new check (and the manifest it read).
+    pub async fn save_addon_check(&self, id: &str, name: &str, manifest: &str, report: &str) -> Result<()> {
+        self.run(
+            "UPDATE addons SET name = ?2, manifest = ?3, report = ?4, checked_at = ?5 WHERE id = ?1",
+            &[s(id), s(name), s(manifest), s(report), n(now() as f64)],
+        )
+        .await
+    }
+
+    pub async fn set_addon_enabled(&self, id: &str, enabled: bool) -> Result<()> {
+        self.run("UPDATE addons SET enabled = ?2 WHERE id = ?1", &[s(id), n(if enabled { 1.0 } else { 0.0 })]).await
+    }
+
+    /// Swaps the add-on with its neighbour above ([up]) or below.
+    pub async fn move_addon(&self, id: &str, up: bool) -> Result<()> {
+        let list = self.addons().await?;
+        let Some(i) = list.iter().position(|a| a.id == id) else { return Ok(()) };
+        let Some(j) = (if up { i.checked_sub(1) } else { Some(i + 1).filter(|&j| j < list.len()) }) else {
+            return Ok(());
+        };
+        // Positions may tie or have gaps; renumber the whole list in the new order.
+        let mut order: Vec<&AddonRow> = list.iter().collect();
+        order.swap(i, j);
+        let statements = order
+            .iter()
+            .enumerate()
+            .map(|(p, a)| {
+                self.db.prepare("UPDATE addons SET position = ?2 WHERE id = ?1").bind(&[s(&a.id), n((p + 1) as f64)])
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.db.batch(statements).await?;
+        Ok(())
+    }
+
+    pub async fn delete_addon(&self, id: &str) -> Result<()> {
+        self.run("DELETE FROM addons WHERE id = ?1", &[s(id)]).await
     }
 
     // -------------------------------------------------------------------------

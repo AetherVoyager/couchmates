@@ -18,12 +18,24 @@ class StremioException implements Exception {
 /// A client for one Stremio addon: the user's catalog, at the base URL the
 /// Hub hands out in `AppConfig.addon`.
 class StremioClient {
-  StremioClient({required String baseUrl, http.Client? httpClient, this.timeout = const Duration(seconds: 20)})
-    : baseUrl = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl,
-      _http = httpClient ?? http.Client();
+  StremioClient({
+    required String baseUrl,
+    http.Client? httpClient,
+    this.timeout = const Duration(seconds: 20),
+    this.name,
+    this.strictStreams = true,
+  }) : baseUrl = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl,
+       _http = httpClient ?? http.Client();
 
   final String baseUrl;
   final Duration timeout;
+
+  /// The add-on's name, put on its streams. Null for the user's own catalog.
+  final String? name;
+
+  /// Telegram-Stremio's stream rules (see [StremioStreams.fromJson]); off
+  /// for other add-ons.
+  final bool strictStreams;
   final http.Client _http;
   StremioManifest? _manifest;
 
@@ -115,8 +127,11 @@ class StremioClient {
 
   /// Streams for a movie id, or an episode's video id, plus any notices
   /// (such as "Limit Reached") the server sent instead.
-  Future<StremioStreams> streams(String type, String id) async =>
-      StremioStreams.fromJson(await _get('/stream/${_segment(type)}/${_segment(id)}.json', missingOk: true));
+  Future<StremioStreams> streams(String type, String id) async => StremioStreams.fromJson(
+    await _get('/stream/${_segment(type)}/${_segment(id)}.json', missingOk: true),
+    strict: strictStreams,
+    source: name,
+  );
 
   /// Subtitles for a movie id or an episode's `tt…:season:episode` id, from
   /// a subtitles addon. [filename] and [videoSize] (bytes) help it rank the

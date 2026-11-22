@@ -110,6 +110,12 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             let (id, action) = (id.to_string(), action.to_string());
             admin::user_action(req, &store, &id, &action, None).await
         }
+        (Method::Get, ["addons"]) => admin::addons_page(&req, &store, None).await,
+        (Method::Post, ["addons"]) => admin::add_addon(req, &store).await,
+        (Method::Post, ["addons", id, action]) => {
+            let (id, action) = (id.to_string(), action.to_string());
+            admin::addon_action(req, &store, &id, &action).await
+        }
         (Method::Get, ["settings"]) => admin::settings_page(&req, &store, None).await,
         (Method::Post, ["settings", "tgs"]) => admin::save_tgs(req, &store).await,
         (Method::Post, ["settings", "tgs", "show-catalog"]) => admin::show_catalog(req, &store).await,

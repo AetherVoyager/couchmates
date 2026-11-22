@@ -111,7 +111,21 @@ pub struct AppConfig {
     /// The user's catalog (a Stremio addon). None until the admin connects
     /// Telegram-Stremio.
     pub addon: Option<AddonInfo>,
+    /// Public Stremio add-ons the admin turned on, in order. The app asks them
+    /// after [`AppConfig::addon`]: their catalogs add home rows, and their
+    /// details, streams and subtitles are merged in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub addons: Vec<ExtraAddon>,
     pub voice: VoiceInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtraAddon {
+    /// The Hub's id for it. Catalog keys in the app start with it.
+    pub id: String,
+    pub name: String,
+    /// `<base_url>/manifest.json`, `/catalog/…` and so on.
+    pub base_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

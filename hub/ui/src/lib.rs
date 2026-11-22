@@ -2,6 +2,7 @@
 //! returns HTML; nothing here reads the database or calls a server. maud
 //! escapes everything interpolated.
 
+pub mod addons;
 pub mod layout;
 pub mod overview;
 pub mod settings;

@@ -5,6 +5,7 @@ trying the Hub locally without either.
 
 Telegram-Stremio: admin login `admin` / `admin-pass`; its Stremio addon is at
 `/stremio/<token>/` with a sample movie and show (short public clips).
+Public add-ons: `/addons/free/manifest.json` and `/addons/torrents/manifest.json`.
 LiveKit: URL `ws://127.0.0.1:8899`, key `devkey`, secret `devsecret`.
 """
 
@@ -141,7 +142,38 @@ class Handler(BaseHTTPRequestHandler):
             }, {"name": "❤ Support", "title": "Enjoying Telegram Stremio?", "externalUrl": "https://example.com"}]})
         return self.send_json({"detail": "Not Found"}, 404)
 
+    def public_addon(self, kind: str, rest: str):
+        """Public Stremio add-ons for the Add-ons page: `free` has a catalog, a
+        playable stream and subtitles; `torrents` only finds torrents."""
+        path = urllib.parse.unquote(rest)
+        if kind == "torrents":
+            if path == "manifest.json":
+                return self.send_json({"id": "fake.torrents", "name": "Fake Torrents", "version": "1.0.0",
+                                       "resources": ["stream"], "types": ["movie", "series"], "catalogs": [],
+                                       "idPrefixes": ["tt"]})
+            if path.startswith("stream/"):
+                return self.send_json({"streams": [{"name": "1080p", "infoHash": "0" * 40}]})
+            return self.send_json({"detail": "Not Found"}, 404)
+        if path == "manifest.json":
+            return self.send_json({
+                "id": "fake.free", "name": "Fake Free Films", "version": "2.1.0", "description": "Free sample films.",
+                "resources": ["catalog", "meta", "stream", "subtitles"], "types": ["movie"], "idPrefixes": ["tt"],
+                "catalogs": [{"type": "movie", "id": "free", "name": "Free films", "extra": [{"name": "search"}]}],
+            })
+        if path.startswith("catalog/movie/free"):
+            return self.send_json({"metas": [{"id": "tt0000001", "type": "movie", "name": "Free Film"}]})
+        if path.startswith("meta/movie/"):
+            return self.send_json({"meta": {"id": path.split("/")[2].removesuffix(".json"), "type": "movie", "name": "Free Film"}})
+        if path.startswith("stream/movie/"):
+            return self.send_json({"streams": [{"name": "Free", "url": "https://example.com/free.mp4"}]})
+        if path.startswith("subtitles/movie/"):
+            return self.send_json({"subtitles": [{"id": "1", "url": "https://example.com/free.srt", "lang": "eng"}]})
+        return self.send_json({"detail": "Not Found"}, 404)
+
     def do_GET(self):
+        if self.path.startswith("/addons/"):
+            kind, _, rest = self.path.removeprefix("/addons/").partition("/")
+            return self.public_addon(kind, rest)
         if self.path.startswith("/stremio/"):
             token, _, rest = self.path.removeprefix("/stremio/").partition("/")
             return self.stremio(token, rest)
