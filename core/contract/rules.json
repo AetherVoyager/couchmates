@@ -18,5 +18,15 @@
     { "input": "ROOM", "expect": "couchmates-ROOM" },
     { "input": "a", "expect": null },
     { "input": "abcdefghijklmnopq", "expect": null }
+  ],
+  "direct_channels": [
+    { "a": "bbbb", "b": "aaaa", "expect": "dm:aaaa:bbbb" },
+    { "a": "aaaa", "b": "bbbb", "expect": "dm:aaaa:bbbb" }
+  ],
+  "chat_texts": [
+    { "input": "  hi 👋  ", "ok": true, "expect": "hi 👋" },
+    { "input": "   ", "ok": false },
+    { "input": "🍿", "repeat": 2000, "ok": true },
+    { "input": "a", "repeat": 2001, "ok": false }
   ]
 }

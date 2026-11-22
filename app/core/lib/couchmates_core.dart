@@ -16,7 +16,7 @@
 /// - Voice: [VoiceChat] for the room, with tokens from the Hub.
 /// - Trackers: [Scrobbler] reports what's watched to Trakt or Simkl through
 ///   the Hub.
-/// - Social: [Presence] shares what this device plays, lists who else is
+/// - Social: [Chat] for the public and private chats. [Presence] shares what this device plays, lists who else is
 ///   watching what, and handles requests to join. [preparePhoto] readies
 ///   profile pictures.
 library;
@@ -29,6 +29,7 @@ export 'src/library/watchlist.dart';
 export 'src/rules.dart';
 export 'src/session/hub_session.dart';
 export 'src/settings/app_settings.dart';
+export 'src/social/chat.dart';
 export 'src/social/photo.dart';
 export 'src/social/presence.dart';
 export 'src/settings/track_choice.dart';

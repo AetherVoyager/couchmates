@@ -201,5 +201,41 @@ class HubClient {
   Future<Activity> cancelJoinRequest(String id) async =>
       Activity.fromJson(await _send('POST', HubPaths.joinRequestsCancel, body: JoinRequestCancel(id: id).toJson()));
 
+  Future<ChatOverview> chatChannels() async => ChatOverview.fromJson(await _send('GET', HubPaths.chat));
+
+  /// A page of [channel]: the latest, those [before] a message id, or those
+  /// [after] one.
+  Future<ChatMessages> chatMessages(String channel, {int? before, int? after}) async {
+    final query = [
+      'channel=${Uri.encodeQueryComponent(channel)}',
+      if (before != null) 'before=$before',
+      if (after != null) 'after=$after',
+    ].join('&');
+    return ChatMessages.fromJson(await _send('GET', '${HubPaths.chatMessages}?$query'));
+  }
+
+  Future<ChatMessage> sendChat(String channel, String text) async => ChatMessage.fromJson(
+    await _send(
+      'POST',
+      HubPaths.chatSend,
+      body: ChatSend(channel: channel, text: text).toJson(),
+    ),
+  );
+
+  Future<void> markChatRead(String channel, int upTo) async {
+    await _send(
+      'POST',
+      HubPaths.chatRead,
+      body: ChatRead(channel: channel, upTo: upTo).toJson(),
+    );
+  }
+
+  /// The live chat socket's address (`ws:` or `wss:`); open it with
+  /// [authHeaders].
+  Uri get chatLiveUrl {
+    final url = _url(HubPaths.chatLive);
+    return url.replace(scheme: url.scheme == 'https' ? 'wss' : 'ws');
+  }
+
   void close() => _http.close();
 }

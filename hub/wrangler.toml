@@ -13,6 +13,16 @@ database_name = "couchmates-hub"
 database_id = "464fadb5-5cd2-4fcc-b980-d2063ed81ae5"
 migrations_dir = "migrations"
 
+# Holds the apps' live chat sockets (hub/worker/src/chat_live.rs). SQLite-backed,
+# which the Workers free plan requires.
+[[durable_objects.bindings]]
+name = "CHAT"
+class_name = "ChatLive"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatLive"]
+
 [triggers]
 # Hourly usage snapshots and cleanup.
 crons = ["7 * * * *"]

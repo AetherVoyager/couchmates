@@ -31,6 +31,24 @@ pub fn room_for_watch_code(code: &str) -> Option<String> {
     (code.len() >= 4 && code.len() <= 16).then(|| format!("couchmates-{code}"))
 }
 
+/// The chat channel everyone on the Hub can read.
+pub const PUBLIC_CHANNEL: &str = "public";
+/// Longest chat message, in characters.
+pub const MAX_CHAT_CHARS: usize = 2000;
+
+/// The private chat between users [a] and [b]: `dm:<id>:<id>`, ids sorted.
+pub fn direct_channel(a: &str, b: &str) -> String {
+    let (x, y) = if a <= b { (a, b) } else { (b, a) };
+    format!("dm:{x}:{y}")
+}
+
+/// [input] as a chat message: trimmed, not empty and at most
+/// [MAX_CHAT_CHARS] characters. None otherwise.
+pub fn chat_text(input: &str) -> Option<String> {
+    let text = input.trim();
+    (!text.is_empty() && text.chars().count() <= MAX_CHAT_CHARS).then(|| text.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,6 +79,29 @@ mod tests {
         for case in cases()["voice_rooms"].as_array().unwrap() {
             let input = case["input"].as_str().unwrap();
             assert_eq!(room_for_watch_code(input).as_deref(), case["expect"].as_str(), "{input:?}");
+        }
+    }
+
+    #[test]
+    fn direct_channels_match_the_contract() {
+        for case in cases()["direct_channels"].as_array().unwrap() {
+            let (a, b) = (case["a"].as_str().unwrap(), case["b"].as_str().unwrap());
+            assert_eq!(direct_channel(a, b), case["expect"].as_str().unwrap(), "{a} {b}");
+        }
+    }
+
+    #[test]
+    fn chat_texts_match_the_contract() {
+        for case in cases()["chat_texts"].as_array().unwrap() {
+            let input = match case["repeat"].as_u64() {
+                Some(n) => case["input"].as_str().unwrap().repeat(n as usize),
+                None => case["input"].as_str().unwrap().to_string(),
+            };
+            let got = chat_text(&input);
+            assert_eq!(got.is_some(), case["ok"].as_bool().unwrap(), "{input:?}");
+            if let Some(expect) = case["expect"].as_str() {
+                assert_eq!(got.as_deref(), Some(expect));
+            }
         }
     }
 }

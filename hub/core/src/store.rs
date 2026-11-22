@@ -91,6 +91,70 @@ pub struct PresenceRow {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct IdRow {
+    id: i64,
+}
+
+/// A chat message with its sender's name and picture.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatRow {
+    pub id: i64,
+    pub channel: String,
+    pub sender: String,
+    pub from_name: String,
+    #[serde(default)]
+    pub from_photo: Option<i64>,
+    pub text: String,
+    pub sent_at: i64,
+}
+
+/// A channel's latest message, the other person of a private chat, and how
+/// many messages from others the user hasn't read (counted up to 100).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatChannelRow {
+    pub id: i64,
+    pub channel: String,
+    pub sender: String,
+    pub from_name: String,
+    #[serde(default)]
+    pub from_photo: Option<i64>,
+    pub text: String,
+    pub sent_at: i64,
+    #[serde(default)]
+    pub other_id: Option<String>,
+    #[serde(default)]
+    pub other_name: Option<String>,
+    #[serde(default)]
+    pub other_photo: Option<i64>,
+    pub unread: i64,
+}
+
+impl ChatChannelRow {
+    /// The channel's latest message.
+    pub fn last(&self) -> ChatRow {
+        ChatRow {
+            id: self.id,
+            channel: self.channel.clone(),
+            sender: self.sender.clone(),
+            from_name: self.from_name.clone(),
+            from_photo: self.from_photo,
+            text: self.text.clone(),
+            sent_at: self.sent_at,
+        }
+    }
+}
+
+/// The columns of a [ChatRow], from `chat_messages m`.
+const CHAT_SELECT: &str = "SELECT m.id, m.channel, m.sender, COALESCE(us.name, 'Someone') AS from_name, \
+     ps.version AS from_photo, m.text, m.sent_at FROM chat_messages m LEFT JOIN users us ON us.id = m.sender \
+     LEFT JOIN photos ps ON ps.user_id = m.sender";
+
+/// Unread messages in `m.channel` for user ?1, counted up to 100.
+const CHAT_UNREAD: &str = "(SELECT COUNT(*) FROM (SELECT 1 FROM chat_messages c WHERE c.channel = m.channel \
+     AND c.sender != ?1 AND c.id > COALESCE((SELECT last_read FROM chat_reads r WHERE r.user_id = ?1 \
+     AND r.channel = m.channel), 0) LIMIT 100)) AS unread";
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct JoinRow {
     pub id: String,
     pub from_user: String,
@@ -320,6 +384,10 @@ impl Store {
                 self.db.prepare("DELETE FROM presence WHERE user_id = ?1").bind(&[s(id)])?,
                 self.db.prepare("DELETE FROM photos WHERE user_id = ?1").bind(&[s(id)])?,
                 self.db.prepare("DELETE FROM join_requests WHERE from_user = ?1 OR to_user = ?1").bind(&[s(id)])?,
+                self.db
+                    .prepare("DELETE FROM chat_messages WHERE channel != 'public' AND (sender = ?1 OR recipient = ?1)")
+                    .bind(&[s(id)])?,
+                self.db.prepare("DELETE FROM chat_reads WHERE user_id = ?1").bind(&[s(id)])?,
                 self.db.prepare("DELETE FROM users WHERE id = ?1").bind(&[s(id)])?,
             ])
             .await?;
@@ -638,6 +706,104 @@ impl Store {
     pub async fn delete_join_request(&self, id: &str, user_id: &str) -> Result<()> {
         self.run("DELETE FROM join_requests WHERE id = ?1 AND (from_user = ?2 OR to_user = ?2)", &[s(id), s(user_id)])
             .await
+    }
+
+    // -------------------------------------------------------------------------
+    // Chat
+
+    /// Saves a message and returns it with its id.
+    pub async fn add_chat(&self, channel: &str, sender: &str, recipient: Option<&str>, text: &str) -> Result<ChatRow> {
+        let row: Option<IdRow> = self
+            .first(
+                "INSERT INTO chat_messages (channel, sender, recipient, text, sent_at) VALUES (?1, ?2, ?3, ?4, ?5) \
+                 RETURNING id",
+                &[s(channel), s(sender), recipient.map(s).unwrap_or(JsValue::NULL), s(text), n(now() as f64)],
+            )
+            .await?;
+        let id = row.ok_or_else(|| worker::Error::RustError("the message wasn't saved".into()))?.id;
+        self.first(&format!("{CHAT_SELECT} WHERE m.id = ?1"), &[n(id as f64)])
+            .await?
+            .ok_or_else(|| worker::Error::RustError("the message wasn't saved".into()))
+    }
+
+    /// Up to [limit] messages of [channel], oldest first: the latest, those
+    /// before [before], or those after [after]. Asks for one more than
+    /// [limit], so a longer answer means there are more.
+    pub async fn chat_page(
+        &self,
+        channel: &str,
+        before: Option<i64>,
+        after: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<ChatRow>> {
+        let take = n((limit + 1) as f64);
+        let rows: Vec<ChatRow> = match (before, after) {
+            (_, Some(after)) => {
+                self.all(
+                    &format!("{CHAT_SELECT} WHERE m.channel = ?1 AND m.id > ?2 ORDER BY m.id ASC LIMIT ?3"),
+                    &[s(channel), n(after as f64), take],
+                )
+                .await?
+            }
+            (Some(before), None) => {
+                let mut rows: Vec<ChatRow> = self
+                    .all(
+                        &format!("{CHAT_SELECT} WHERE m.channel = ?1 AND m.id < ?2 ORDER BY m.id DESC LIMIT ?3"),
+                        &[s(channel), n(before as f64), take],
+                    )
+                    .await?;
+                rows.reverse();
+                rows
+            }
+            (None, None) => {
+                let mut rows: Vec<ChatRow> = self
+                    .all(
+                        &format!("{CHAT_SELECT} WHERE m.channel = ?1 ORDER BY m.id DESC LIMIT ?2"),
+                        &[s(channel), take],
+                    )
+                    .await?;
+                rows.reverse();
+                rows
+            }
+        };
+        Ok(rows)
+    }
+
+    /// The public channel's latest message (if any), then [user_id]'s private
+    /// chats, latest first.
+    pub async fn chat_channels(&self, user_id: &str) -> Result<(Option<ChatChannelRow>, Vec<ChatChannelRow>)> {
+        let public = self
+            .first(
+                &format!(
+                    "SELECT x.*, {CHAT_UNREAD} FROM ({CHAT_SELECT} WHERE m.channel = 'public' \
+                     ORDER BY m.id DESC LIMIT 1) x JOIN chat_messages m ON m.id = x.id"
+                ),
+                &[s(user_id)],
+            )
+            .await?;
+        let direct = self
+            .all(
+                &format!(
+                    "SELECT x.*, uo.id AS other_id, uo.name AS other_name, po.version AS other_photo, {CHAT_UNREAD} \
+                     FROM ({CHAT_SELECT} WHERE m.id IN (SELECT MAX(id) FROM chat_messages WHERE channel != 'public' \
+                     AND (sender = ?1 OR recipient = ?1) GROUP BY channel)) x JOIN chat_messages m ON m.id = x.id \
+                     JOIN users uo ON uo.id = CASE WHEN m.sender = ?1 THEN m.recipient ELSE m.sender END \
+                     LEFT JOIN photos po ON po.user_id = uo.id ORDER BY x.id DESC LIMIT 200"
+                ),
+                &[s(user_id)],
+            )
+            .await?;
+        Ok((public, direct))
+    }
+
+    /// Moves [user_id]'s read marker in [channel] forward to [up_to].
+    pub async fn mark_chat_read(&self, user_id: &str, channel: &str, up_to: i64) -> Result<()> {
+        self.run(
+            "INSERT INTO chat_reads (user_id, channel, last_read) VALUES (?1, ?2, ?3) \
+             ON CONFLICT(user_id, channel) DO UPDATE SET last_read = MAX(last_read, excluded.last_read)",
+            &[s(user_id), s(channel), n(up_to as f64)],
+        )
+        .await
     }
 
     pub async fn cleanup(&self) -> Result<()> {
