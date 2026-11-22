@@ -1,0 +1,38 @@
+name: Auto-merge Claude PRs
+
+# Pull requests that Claude opens come from branches named claude/... in this
+# repository. Once such a PR is ready (not a draft), squash-merge it into main
+# and delete its branch. PRs from forks or other branches are left alone: a
+# fork can name its branch claude/... too, so the head repository is checked.
+#
+# Runs on a Linux runner for a few seconds. A merge made with GITHUB_TOKEN
+# doesn't start other workflows, which is fine: Build runs only on v* tags.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  merge:
+    if: >-
+      startsWith(github.head_ref, 'claude/') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Squash-merge and delete the branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$SHA"
