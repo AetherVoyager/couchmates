@@ -1,7 +1,7 @@
 name: couchmates
 description: "A beautiful Plex and Jellyfin client for Flutter"
 publish_to: "none"
-version: 0.3.3+9
+version: 0.4.0+10
 
 environment:
   # Dart floor stays 3.12: freezed 3.x emits `final` constructor parameters,
