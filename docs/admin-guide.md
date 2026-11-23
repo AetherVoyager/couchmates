@@ -70,7 +70,9 @@ for the same title share one request). Answer with **Approve**, **Mark added** o
 whoever asked sees the status and note in the app. A declined title asked for again goes back to pending.
 
 A request never downloads anything. Getting the title is up to you: add it to Telegram-Stremio the usual way, then
-mark it added. The Overview shows how many requests are waiting.
+mark it added, or let the Hub do it: once an hour it asks Telegram-Stremio about every waiting request and marks
+the ones it now has **Added** (**Check library now** does the same at once). The Overview shows how many requests
+are waiting.
 
 To let your own program answer requests, make a bot token under **Bot access** on the same page. The calls, the
 webhook and an example are in [`bot-api.md`](bot-api.md).

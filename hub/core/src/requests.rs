@@ -119,6 +119,43 @@ pub async fn cancel(mut req: Request, store: &Store) -> Result<Response> {
     web::json(&OkResponse { ok: true }, 200)
 }
 
+/// Most open requests checked in one go, to stay well inside a Worker's time.
+const MAX_CHECKS: usize = 40;
+/// The note a request gets when the Hub finds its title in the library.
+pub const FOUND_NOTE: &str = "It's in the library now.";
+
+/// Whether Telegram-Stremio's answer to `/meta/<kind>/<id>.json` is a real title.
+pub fn meta_found(body: &serde_json::Value) -> bool {
+    body.get("meta").and_then(|m| m.get("id")).and_then(serde_json::Value::as_str).is_some_and(|id| !id.is_empty())
+}
+
+/// Marks pending and approved requests Added when Telegram-Stremio has their title now, asking it with a user's
+/// access token. Returns the names marked. Run hourly and from the Requests page; does nothing without a
+/// connected server or a user with a token.
+pub async fn sync_with_library(store: &Store) -> Result<Vec<String>> {
+    let Some(tgs) = crate::tgs::TgsConfig::load(store).await? else {
+        return Ok(vec![]);
+    };
+    let users = store.users().await?;
+    let Some(token) = users.iter().filter(|u| u.disabled == 0).find_map(|u| store.user_tgs_token(u)) else {
+        return Ok(vec![]);
+    };
+    let base = tgs.addon_base(&token);
+    let open = store.media_requests("", &[request_status::PENDING, request_status::APPROVED]).await?;
+    let mut added = Vec::new();
+    for r in open.into_iter().take(MAX_CHECKS) {
+        let url = format!("{base}/meta/{}/{}.json", r.kind, crate::addons::path_segment(&r.title_id));
+        if let Ok((200, body)) = crate::addons::get_json(&url).await
+            && meta_found(&body)
+        {
+            let note = r.note.as_deref().unwrap_or(FOUND_NOTE);
+            store.set_request_status(&r.id, request_status::ADDED, Some(note)).await?;
+            added.push(r.name);
+        }
+    }
+    Ok(added)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +184,13 @@ mod tests {
         assert!(clean(ask("movie", "tt1/../x", "x", None)).is_err());
         assert!(clean(ask("movie", "tt1", "   ", None)).is_err());
         assert_eq!(clean(ask("movie", "tt1", &"n".repeat(500), None)).unwrap().name.len(), MAX_NAME);
+    }
+
+    #[test]
+    fn only_a_real_meta_counts_as_found() {
+        assert!(meta_found(&serde_json::json!({"meta": {"id": "tt1", "name": "x"}})));
+        assert!(!meta_found(&serde_json::json!({"meta": null})));
+        assert!(!meta_found(&serde_json::json!({})));
+        assert!(!meta_found(&serde_json::json!({"meta": {"id": ""}})));
     }
 }

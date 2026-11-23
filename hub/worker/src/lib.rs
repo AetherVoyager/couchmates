@@ -129,6 +129,7 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             admin::addon_action(req, &store, &id, &action).await
         }
         (Method::Get, ["requests"]) => admin::requests_page(&req, &store, None).await,
+        (Method::Post, ["requests", "check"]) => admin::check_requests(&store).await,
         (Method::Post, ["requests", id, action]) => {
             let (id, action) = (id.to_string(), action.to_string());
             admin::request_action(req, &store, &id, &action).await
@@ -162,6 +163,11 @@ pub async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) 
 async fn snapshot(env: &Env) -> Result<()> {
     let store = store::Store::from_env(env)?;
     store.cleanup().await?;
+    match requests::sync_with_library(&store).await {
+        Ok(added) if !added.is_empty() => worker::console_log!("requests now in the library: {}", added.len()),
+        Ok(_) => {}
+        Err(e) => worker::console_warn!("request check failed: {e}"),
+    }
     let Ok(mut client) = tgs::TgsClient::new(&store).await else {
         return Ok(());
     };

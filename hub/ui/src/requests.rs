@@ -114,7 +114,11 @@ pub fn page(requests: &[Request], filter: &str, pending: i64, bot: &BotAccess, f
             p.muted style="margin-top:0" {
                 "Titles friends asked for from the app's search because they aren't in the library. "
                 "Nothing is downloaded for a request: add the title to Telegram-Stremio yourself, then mark it Added. "
-                "Whoever asked sees the status and your note in the app."
+                "Whoever asked sees the status and your note in the app. Once an hour the Hub also checks "
+                "Telegram-Stremio and marks waiting requests Added when their title is there."
+            }
+            form method="post" action="/requests/check" {
+                div.row { button.secondary type="submit" { "Check library now" } }
             }
             div.row {
                 @for (value, label) in FILTERS {

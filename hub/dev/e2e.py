@@ -381,6 +381,20 @@ req3 = json.loads(body) if s == 200 else {}
 s, _, _ = call(anon, "/api/app/requests/cancel", data={"id": req3.get("id")}, headers=bob)
 s, _, body = call(anon, "/api/app/requests", headers=auth)
 check("a pending request nobody wants any more goes", [r["name"] for r in json.loads(body)["requests"]] == ["The Matrix"], body)
+# --- Requests are marked added once Telegram-Stremio has the title
+s, _, body = call(anon, "/api/app/requests", data={"kind": "movie", "title_id": "tt1254207", "name": "Big Buck Bunny"}, headers=auth)
+bunny = json.loads(body) if s == 200 else {}
+s, _, body = call(anon, "/api/app/requests", data={"kind": "movie", "title_id": "tt0000404", "name": "Not There"}, headers=auth)
+missing = json.loads(body) if s == 200 else {}
+s, hd, _ = call(b, "/requests/check", form={})
+check("Check library now marks the title the server has", "Big Buck Bunny is in the library now" in urllib.parse.unquote_plus(hd.get("location", "")), hd.get("location"))
+got = {r["id"]: r for r in json.loads(call(anon, "/api/app/requests", headers=auth)[2])["requests"]}
+check("alice sees it added with a note; the other stays pending",
+      got.get(bunny.get("id"), {}).get("status") == "added" and got[bunny["id"]].get("note") == "It's in the library now."
+      and got.get(missing.get("id"), {}).get("status") == "pending", got)
+for r in (bunny, missing):
+    call(b, f"/requests/{r.get('id')}/delete", form={})
+
 # --- The bot API: the admin's own program answers requests
 FAKE = "http://127.0.0.1:8899"
 s, _, body = call(anon, "/api/bot/requests")

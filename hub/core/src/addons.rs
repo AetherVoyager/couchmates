@@ -478,6 +478,11 @@ pub async fn get_json(url: &str) -> Probe {
     }
 }
 
+/// [s] as one URL path segment, keeping colons the way Stremio ids use them.
+pub fn path_segment(s: &str) -> String {
+    segment(s)
+}
+
 fn segment(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>().replace("%3A", ":")
 }

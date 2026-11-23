@@ -747,6 +747,20 @@ pub async fn bot_action(mut req: Request, store: &Store, action: &str) -> Result
     }
 }
 
+/// Requests → Check library now: marks requests Added whose titles Telegram-Stremio has.
+pub async fn check_requests(store: &Store) -> Result<Response> {
+    if TgsConfig::load(store).await?.is_none() {
+        return web::redirect_with("/requests", false, "Connect Telegram-Stremio in Settings first.");
+    }
+    let added = couchmates_hub_core::requests::sync_with_library(store).await?;
+    let message = match added.len() {
+        0 => "No waiting request is in the library yet.".to_string(),
+        1 => format!("{} is in the library now: marked added.", added[0]),
+        n => format!("{n} requests are in the library now: marked added ({}).", added.join(", ")),
+    };
+    web::redirect_with("/requests", true, &message)
+}
+
 /// Requests → a status button (with the note field) or Delete.
 pub async fn request_action(mut req: Request, store: &Store, id: &str, action: &str) -> Result<Response> {
     let form = req.form_data().await?;
