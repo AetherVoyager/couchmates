@@ -361,6 +361,8 @@ s, _, page = call(b, "/")
 check("the overview counts it", s == 200 and "waiting for your answer" in page)
 s, hd, _ = call(b, f"/requests/{req1.get('id')}/status", form={"status": "approved", "note": "This weekend", "back": "open"})
 check("the admin approves it with a note", s == 303 and "approved" in urllib.parse.unquote_plus(hd.get("location", "")), hd.get("location"))
+s, _, page = call(b, hd.get("location", "/"))
+check("and lands back on the Requests page, not a 404", s == 200 and "This weekend" in page and "is approved" in page, s)
 s, _, _ = call(b, f"/requests/{req1.get('id')}/status", form={"status": "downloading", "note": ""})
 s, _, body = call(anon, "/api/app/requests", headers=bob)
 mine = json.loads(body)["requests"][0] if s == 200 else {}

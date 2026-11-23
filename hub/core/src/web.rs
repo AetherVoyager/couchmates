@@ -73,11 +73,17 @@ pub fn redirect(path: &str) -> Result<Response> {
 }
 
 pub fn redirect_with(path: &str, ok: bool, message: &str) -> Result<Response> {
+    redirect(&redirect_target(path, ok, message))
+}
+
+/// [path] (which may carry a query, such as `/requests?status=open`) with the flash message added to its query.
+pub fn redirect_target(path: &str, ok: bool, message: &str) -> String {
+    let (path, query) = path.split_once('?').unwrap_or((path, ""));
     let mut url = worker::Url::parse("http://x").expect("static url");
     url.set_path(path);
+    url.set_query((!query.is_empty()).then_some(query));
     url.query_pairs_mut().append_pair(if ok { "ok" } else { "err" }, message);
-    let target = format!("{}?{}", url.path(), url.query().unwrap_or_default());
-    redirect(&target)
+    format!("{}?{}", url.path(), url.query().unwrap_or_default())
 }
 
 pub fn json<T: Serialize>(value: &T, status: u16) -> Result<Response> {
@@ -114,4 +120,18 @@ pub fn flash_from_query(req: &Request) -> Option<Flash> {
 /// A form number, treating blank or invalid as 0 and clamping negatives.
 pub fn parse_gb(value: Option<String>) -> f64 {
     value.and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite()).map_or(0.0, |v| v.max(0.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flash_redirects_keep_the_path_and_its_query() {
+        assert_eq!(redirect_target("/users", true, "Saved."), "/users?ok=Saved.");
+        assert_eq!(
+            redirect_target("/requests?status=open", true, "Avengers: Endgame is pending."),
+            "/requests?status=open&ok=Avengers%3A+Endgame+is+pending."
+        );
+    }
 }
