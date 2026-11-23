@@ -65,13 +65,18 @@ first say on details. Links to configured add-ons can hold keys, so the Hub stor
 ## Requests
 
 The app's **Search** finds any movie or show: your library first, then your add-ons and Stremio's Cinemeta catalog.
-Titles that aren't in the library have a **Request** button. **Requests** lists them, with who asked (friends asking
-for the same title share one request). Answer with **Approve**, **Mark added** or **Decline**, and an optional note;
+Titles that aren't in the library have a **Request** button, on their page as well, so the add-on rows on Home can
+be requested from too. Shows are requested one episode at a time (each episode is its own request, labelled like
+*S2 E5*), and a show already in the library lists the aired episodes it lacks so friends can ask for those.
+Missing episodes are worked out by comparing Telegram-Stremio's episode list for the show with Cinemeta's (or an
+add-on's): Telegram-Stremio only lists episodes it has a file for, specials and unaired episodes are left out, and a
+library show without an IMDb id is matched by name and year. **Requests** lists them, with who asked (friends asking
+for the same title or episode share one request). Answer with **Approve**, **Mark added** or **Decline**, and an optional note;
 whoever asked sees the status and note in the app. A declined title asked for again goes back to pending.
 
 A request never downloads anything. Getting the title is up to you: add it to Telegram-Stremio the usual way, then
 mark it added, or let the Hub do it: once an hour it asks Telegram-Stremio about every waiting request and marks
-the ones it now has **Added** (**Check library now** does the same at once). The Overview shows how many requests
+the ones it now has **Added**, an episode once that episode is listed (**Check library now** does the same at once). The Overview shows how many requests
 are waiting.
 
 To let your own program answer requests, make a bot token under **Bot access** on the same page. The calls, the

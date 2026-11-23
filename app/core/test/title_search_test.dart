@@ -94,4 +94,113 @@ void main() {
     final show = requestFor(const StremioMeta(id: 'tt2', type: 'series', name: 'B', poster: 'https://x/p.jpg'));
     expect(show.toJson(), {'kind': 'series', 'title_id': 'tt2', 'name': 'B', 'poster': 'https://x/p.jpg'});
   });
+
+  group('opening a title', () {
+    Map<String, Object> ep(int s, int e, {String? released}) => {
+      'id': 'tt5:$s:$e',
+      'title': 'Ep $e',
+      'season': s,
+      'episode': e,
+      'released': ?released,
+    };
+    Map<String, Object> show({String id = 'tt5', required List<Map<String, Object>> videos}) => {
+      'meta': {'id': id, 'type': 'series', 'name': 'The Show', 'releaseInfo': '2020', 'videos': videos},
+    };
+    TitleSearch searchOn(Map<String, Object> extra) {
+      final http = server({...routes(), ...extra});
+      return TitleSearch(
+        library: StremioClient(baseUrl: lib, httpClient: http),
+        sources: [StremioClient(baseUrl: cine, httpClient: http)],
+      );
+    }
+
+    const item = StremioMeta(id: 'tt5', type: 'series', name: 'The Show', releaseInfo: '2020');
+
+    test('a show the library has lists the released episodes it lacks', () async {
+      final search = searchOn({
+        '$lib/meta/series/tt5.json': show(videos: [ep(1, 1), ep(1, 3)]),
+        '$cine/meta/series/tt5.json': show(
+          videos: [
+            ep(1, 1),
+            ep(1, 2),
+            ep(1, 3),
+            ep(0, 1),
+            ep(2, 1, released: '2020-03-01T00:00:00Z'),
+            ep(2, 2, released: '2999-01-01T00:00:00Z'),
+          ],
+        ),
+      });
+      final found = await search.lookUp(item);
+      expect(found.inLibrary && found.playable, isTrue);
+      expect([for (final v in found.missing()) '${v.season}:${v.episode}'], ['1:2', '2:1']);
+    });
+
+    test("a title the library doesn't have comes from the other catalogs", () async {
+      final search = searchOn({
+        '$lib/meta/series/tt5.json': {'meta': null},
+        '$cine/meta/series/tt5.json': show(videos: [ep(1, 1), ep(1, 2)]),
+      });
+      final found = await search.lookUp(item);
+      expect(found.inLibrary || found.playable, isFalse);
+      expect(found.full?.videos.length, 2);
+      expect(found.missing(), isEmpty);
+    });
+
+    test('a library without IMDb ids is matched by name and year', () async {
+      final search = searchOn({
+        '$lib/catalog/movie/top/search=The+Show.json': {
+          'metas': [
+            {'id': 'local-5', 'type': 'series', 'name': 'The Show', 'releaseInfo': '2020'},
+          ],
+        },
+        '$lib/meta/series/local-5.json': show(id: 'local-5', videos: [ep(1, 1)]),
+        '$cine/meta/series/tt5.json': show(videos: [ep(1, 1), ep(1, 2)]),
+      });
+      final found = await search.lookUp(item);
+      expect(found.inLibrary, isTrue);
+      expect(found.meta.id, 'local-5');
+    });
+
+    test('episode requests carry the numbers and name', () {
+      const v = StremioVideo(id: 'tt5:1:2', title: ' Two ', season: 1, episode: 2);
+      expect(requestFor(item, video: v).toJson(), {
+        'kind': 'series',
+        'title_id': 'tt5',
+        'name': 'The Show',
+        'year': '2020',
+        'season': 1,
+        'episode': 2,
+        'episode_title': 'Two',
+      });
+      expect(episodesRequestFor(item, [v]).toJson()['episodes'], [
+        {'season': 1, 'episode': 2, 'title': 'Two'},
+      ]);
+    });
+  });
+
+  test('requests group by title, episodes in order, the most pressing status first', () {
+    MediaRequest r(String id, String title, String status, {int? s, int? e, bool mine = false}) => MediaRequest(
+      id: id,
+      kind: s == null ? 'movie' : 'series',
+      titleId: title,
+      name: title,
+      season: s,
+      episode: e,
+      status: status,
+      mine: mine,
+      createdAt: 1,
+      updatedAt: 1,
+    );
+    final groups = groupRequests([
+      r('a', 'tt5', RequestStatus.added, s: 2, e: 1),
+      r('b', 'tt1', RequestStatus.pending),
+      r('c', 'tt5', RequestStatus.approved, s: 1, e: 3, mine: true),
+      r('d', 'tt5', RequestStatus.added, s: 1, e: 2),
+    ]);
+    expect([for (final g in groups) g.first.titleId], ['tt5', 'tt1']);
+    expect(groups.first.episodesText, 'S1 E2, E3 · S2 E1');
+    expect(groups.first.status, RequestStatus.approved);
+    expect(groups.first.mine, isTrue);
+    expect(groups.last.episodesText, isNull);
+  });
 }

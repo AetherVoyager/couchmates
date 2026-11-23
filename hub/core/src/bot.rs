@@ -23,7 +23,7 @@ use std::time::Duration;
 use couchmates_core::api::{
     BotEvent, BotStatus, BotWebhook, MediaRequest, MediaRequestUpdate, MediaRequests, OkResponse, request_status,
 };
-use futures_util::future::{Either, select};
+use futures_util::future::{Either, join_all, select};
 use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -195,29 +195,40 @@ pub fn signature(token_hash: &str, body: &str) -> String {
     format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
 }
 
-/// Tells the bot's webhook about [request], when one is saved. Best effort: a slow or broken webhook never
-/// stops a friend's request, and the bot can always catch up with [list].
-pub async fn notify(store: &Store, request: &MediaRequest) {
+/// Tells the bot's webhook about each of [requests], when one is saved: one POST per request, sent together.
+/// Best effort: a slow or broken webhook never stops a friend's request, and the bot can always catch up with
+/// [list].
+pub async fn notify(store: &Store, requests: &[MediaRequest]) {
+    if requests.is_empty() {
+        return;
+    }
     let (Ok(Some(url)), Ok(Some(token_hash))) = (store.setting(WEBHOOK).await, store.setting(TOKEN_HASH).await) else {
         return;
     };
-    let event = BotWebhook { event: "request.created".into(), request: request.clone() };
-    let Ok(body) = serde_json::to_string(&event) else {
-        return;
-    };
-    let send = async {
-        let headers = Headers::new();
-        headers.set("content-type", "application/json").ok()?;
-        headers.set("x-couchmates-event", &event.event).ok()?;
-        headers.set("x-couchmates-signature", &signature(&token_hash, &body)).ok()?;
-        let mut init = RequestInit::new();
-        init.with_method(Method::Post).with_headers(headers).with_body(Some(body.clone().into()));
-        let req = Request::new_with_init(&url, &init).ok()?;
-        Fetch::Request(req).send().await.ok().map(|r| r.status_code())
-    };
-    match select(Box::pin(send), Delay::from(WEBHOOK_TIMEOUT)).await {
-        Either::Left((Some(status), _)) if (200..300).contains(&status) => {}
-        Either::Left((status, _)) => worker::console_warn!("bot webhook answered {status:?}"),
+    let sends = requests.iter().map(|request| {
+        let url = url.clone();
+        let token_hash = token_hash.clone();
+        async move {
+            let event = BotWebhook { event: "request.created".into(), request: request.clone() };
+            let body = serde_json::to_string(&event).ok()?;
+            let headers = Headers::new();
+            headers.set("content-type", "application/json").ok()?;
+            headers.set("x-couchmates-event", &event.event).ok()?;
+            headers.set("x-couchmates-signature", &signature(&token_hash, &body)).ok()?;
+            let mut init = RequestInit::new();
+            init.with_method(Method::Post).with_headers(headers).with_body(Some(body.into()));
+            let req = Request::new_with_init(&url, &init).ok()?;
+            Fetch::Request(req).send().await.ok().map(|r| r.status_code())
+        }
+    });
+    match select(Box::pin(join_all(sends)), Delay::from(WEBHOOK_TIMEOUT)).await {
+        Either::Left((answers, _)) => {
+            for status in answers {
+                if !status.is_some_and(|s| (200..300).contains(&s)) {
+                    worker::console_warn!("bot webhook answered {status:?}");
+                }
+            }
+        }
         Either::Right(_) => worker::console_warn!("bot webhook didn't answer in time"),
     }
 }

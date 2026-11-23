@@ -10,13 +10,16 @@ import '../theme.dart';
 import '../watch_together/watch_together_sheet.dart';
 import '../widgets/poster.dart';
 import 'details_extras.dart';
+import 'details_requests.dart';
 import 'home_screen.dart' show PlayButton;
 import 'media_tracks.dart';
 import 'play.dart';
 
 /// A movie or a show: a big backdrop with the title logo, facts, actions,
 /// the version, audio and subtitle pickers, and the description; then info,
-/// cast, episodes and extras.
+/// cast, episodes and extras. A title that isn't in the library offers to
+/// request it (a show by episode), and a show in the library lists the
+/// episodes it's missing.
 class DetailsScreen extends StatefulWidget {
   const DetailsScreen({super.key, required this.item});
 
@@ -28,7 +31,7 @@ class DetailsScreen extends StatefulWidget {
 }
 
 class _DetailsScreenState extends State<DetailsScreen> {
-  late Future<StremioMeta?> _meta;
+  late Future<TitleLookup> _lookup;
   Future<TitleInfo>? _info;
   String? _infoFor;
   int? _season;
@@ -40,7 +43,7 @@ class _DetailsScreenState extends State<DetailsScreen> {
   }
 
   void _load() {
-    _meta = context.read<HubSession>().catalog!.meta(widget.item.type, widget.item.id);
+    _lookup = openTitle(context.read<HubSession>(), widget.item);
   }
 
   @override
@@ -59,39 +62,44 @@ class _DetailsScreenState extends State<DetailsScreen> {
           ),
         ),
       ),
-      body: FutureBuilder<StremioMeta?>(
-        future: _meta,
+      body: FutureBuilder<TitleLookup>(
+        future: _lookup,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
           if (snap.hasError) {
             return MessageView(icon: Icons.cloud_off, message: errorText(snap.error!), onRetry: () => setState(_load));
           }
-          // Fall back to the catalog entry if the server has no details.
-          final meta = snap.data ?? widget.item;
+          final lookup = snap.data!;
+          final meta = lookup.meta;
           if (_infoFor != meta.id) {
             _infoFor = meta.id;
             _info = loadTitleInfo(context.read<HubSession>(), meta);
           }
           return FutureBuilder<TitleInfo>(
             future: _info,
-            builder: (context, info) => _body(context, meta, info.data ?? const TitleInfo()),
+            builder: (context, info) => _body(context, lookup, info.data ?? const TitleInfo()),
           );
         },
       ),
     );
   }
 
-  Widget _body(BuildContext context, StremioMeta meta, TitleInfo info) {
+  Widget _body(BuildContext context, TitleLookup lookup, TitleInfo info) {
+    final meta = lookup.meta;
     final size = MediaQuery.sizeOf(context);
     final wide = size.width > 760;
     final gutter = pageGutter(context);
-    final seasons = meta.seasons;
-    final season = _season ?? (seasons.isEmpty ? null : seasons.first);
-    final episodes = season == null ? const <StremioVideo>[] : meta.episodesOf(season);
+    final playable = lookup.playable;
+    // A show that isn't in the library lists every episode, to ask for them.
+    final listing = playable ? meta : (lookup.full ?? meta);
+    final seasons = listing.seasons;
+    final season = _season != null && seasons.contains(_season) ? _season : (seasons.isEmpty ? null : seasons.first);
+    final episodes = season == null ? const <StremioVideo>[] : listing.episodesOf(season);
+    final missing = lookup.missing();
     final bg = Theme.of(context).colorScheme.surface;
     final hasArt = meta.background != null;
 
-    final header = _Header(meta: meta, info: info);
+    final header = _Header(meta: meta, info: info, lookup: lookup);
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -168,17 +176,30 @@ class _DetailsScreenState extends State<DetailsScreen> {
                       season == 0 ? 'Specials' : 'Season $season',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Cinema.muted),
                     ),
-                  const Spacer(),
-                  _SeasonWatchedButton(meta: meta, episodes: episodes),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: playable
+                            ? _SeasonWatchedButton(meta: meta, episodes: episodes)
+                            : RequestSeasonButton(meta: meta, episodes: episodes),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
           SliverList.builder(
             itemCount: episodes.length,
-            itemBuilder: (context, i) => _EpisodeTile(meta: meta, video: episodes[i]),
+            itemBuilder: (context, i) => _EpisodeTile(meta: meta, video: episodes[i], requesting: !playable),
           ),
         ],
+        if (playable && missing.isNotEmpty)
+          SliverToBoxAdapter(
+            child: MissingEpisodes(meta: meta, missing: missing),
+          ),
         SliverToBoxAdapter(child: ExtrasRow(videos: info.videos)),
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
@@ -223,10 +244,11 @@ class _SeasonPicker extends StatelessWidget {
 
 /// Title logo or name, facts, tagline, actions, media pickers and description.
 class _Header extends StatefulWidget {
-  const _Header({required this.meta, required this.info});
+  const _Header({required this.meta, required this.info, required this.lookup});
 
   final StremioMeta meta;
   final TitleInfo info;
+  final TitleLookup lookup;
 
   @override
   State<_Header> createState() => _HeaderState();
@@ -287,14 +309,38 @@ class _HeaderState extends State<_Header> {
           ),
         ],
         const SizedBox(height: 22),
-        _Actions(meta: meta, info: info, video: video, choice: _choice),
-        const SizedBox(height: 18),
-        MediaPickers(
-          key: ValueKey(video?.id ?? meta.id),
-          meta: meta,
-          video: video,
-          onChanged: (c) => setState(() => _choice = c),
-        ),
+        if (widget.lookup.playable) ...[
+          _Actions(meta: meta, info: info, video: video, choice: _choice),
+          const SizedBox(height: 18),
+          MediaPickers(
+            key: ValueKey(video?.id ?? meta.id),
+            meta: meta,
+            video: video,
+            onChanged: (c) => setState(() => _choice = c),
+          ),
+        ] else ...[
+          RequestTitleActions(lookup: widget.lookup),
+          if (info.videos.isNotEmpty || (meta.id.startsWith('tt') && theme.platform == TargetPlatform.windows)) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 12,
+              children: [
+                if (info.videos.isNotEmpty)
+                  _ActionButton(
+                    icon: Icons.theaters_rounded,
+                    tooltip: 'Trailer',
+                    onPressed: () => launchUrl(info.videos.first.url, mode: LaunchMode.externalApplication),
+                  ),
+                if (meta.id.startsWith('tt') && theme.platform == TargetPlatform.windows)
+                  _ActionButton(
+                    icon: Icons.open_in_new_rounded,
+                    tooltip: 'Open on IMDb',
+                    onPressed: () => launchUrl(Uri.parse('https://www.imdb.com/title/${meta.id}/')),
+                  ),
+              ],
+            ),
+          ],
+        ],
         if (meta.description != null) ...[
           const SizedBox(height: 18),
           Text(meta.description!, style: theme.textTheme.bodyLarge?.copyWith(color: Colors.white, height: 1.45)),
@@ -484,10 +530,13 @@ class _SeasonWatchedButton extends StatelessWidget {
 }
 
 class _EpisodeTile extends StatelessWidget {
-  const _EpisodeTile({required this.meta, required this.video});
+  const _EpisodeTile({required this.meta, required this.video, this.requesting = false});
 
   final StremioMeta meta;
   final StremioVideo video;
+
+  /// The show isn't in the library: the episode can be asked for, not played.
+  final bool requesting;
 
   @override
   Widget build(BuildContext context) {
@@ -503,7 +552,7 @@ class _EpisodeTile extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: gutter - 12),
       child: InkWell(
         borderRadius: BorderRadius.circular(6),
-        onTap: () => playTitle(context, meta: meta, video: video),
+        onTap: requesting ? null : () => playTitle(context, meta: meta, video: video),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: const BoxDecoration(
@@ -530,7 +579,8 @@ class _EpisodeTile extends StatelessWidget {
                       fit: StackFit.expand,
                       children: [
                         NetImage(video.thumbnail ?? meta.background),
-                        const Center(child: Icon(Icons.play_circle_outline, size: 40, color: Colors.white70)),
+                        if (!requesting)
+                          const Center(child: Icon(Icons.play_circle_outline, size: 40, color: Colors.white70)),
                         if (watched)
                           const Positioned(
                             top: 6,
@@ -584,12 +634,15 @@ class _EpisodeTile extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: watched ? 'Mark as not watched' : 'Mark as watched',
-                color: Cinema.muted,
-                icon: Icon(watched ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded),
-                onPressed: () => progress.setWatched(meta, video: video, watched: !watched),
-              ),
+              if (requesting)
+                EpisodeRequestButton(meta: meta, video: video)
+              else
+                IconButton(
+                  tooltip: watched ? 'Mark as not watched' : 'Mark as watched',
+                  color: Cinema.muted,
+                  icon: Icon(watched ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded),
+                  onPressed: () => progress.setWatched(meta, video: video, watched: !watched),
+                ),
             ],
           ),
         ),

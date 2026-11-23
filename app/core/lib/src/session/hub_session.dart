@@ -238,14 +238,30 @@ class HubSession extends ChangeNotifier {
   List<MediaRequest> get requests => _requests;
   bool get requestsLoaded => _requestsLoaded;
 
-  /// The request for [meta], if anyone asked for it.
+  /// The request for the movie or whole show [meta], if anyone asked for it.
   MediaRequest? requestOf(StremioMeta meta) {
     final kind = meta.isSeries ? 'series' : 'movie';
     for (final r in _requests) {
-      if (r.kind == kind && r.titleId == meta.id) return r;
+      if (r.kind == kind && r.titleId == meta.id && !r.isEpisode) return r;
     }
     return null;
   }
+
+  /// The request for one episode of the show [meta], if anyone asked for it.
+  MediaRequest? requestOfEpisode(StremioMeta meta, StremioVideo video) {
+    for (final r in _requests) {
+      if (r.kind == 'series' && r.titleId == meta.id && r.season == video.season && r.episode == video.episode) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  /// Every request for [meta] and its episodes.
+  List<MediaRequest> requestsFor(StremioMeta meta) => [
+    for (final r in _requests)
+      if (r.titleId == meta.id && r.kind == (meta.isSeries ? 'series' : 'movie')) r,
+  ];
 
   /// Fetches the requests again. Throws [HubException] when the Hub can't be asked.
   Future<void> loadRequests() async {
@@ -254,17 +270,36 @@ class HubSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Asks the admin to add [meta] to the library, or adds this user to the request there is. Nothing is
-  /// downloaded: the admin adds it by hand.
-  Future<MediaRequest> askFor(StremioMeta meta) async {
-    final saved = await _require().askForTitle(requestFor(meta));
+  void _keep(List<MediaRequest> saved) {
+    final ids = {for (final r in saved) r.id};
     _requests = [
-      saved,
+      ...saved,
       for (final r in _requests)
-        if (r.id != saved.id) r,
+        if (!ids.contains(r.id)) r,
     ];
     notifyListeners();
+  }
+
+  /// Asks the admin to add [meta] (or with [video], that one episode of the show), or adds this user to the
+  /// request there is. Nothing is downloaded: the admin adds it.
+  Future<MediaRequest> askFor(StremioMeta meta, {StremioVideo? video}) async {
+    final saved = await _require().askForTitle(requestFor(meta, video: video));
+    _keep([saved]);
     return saved;
+  }
+
+  /// Asks for [episodes] of the show [meta], each its own request, a few dozen per call. Returns the requests.
+  Future<List<MediaRequest>> askForEpisodes(StremioMeta meta, List<StremioVideo> episodes) async {
+    final hub = _require();
+    final out = <MediaRequest>[];
+    const step = MediaRequestEpisodes.maxEpisodes;
+    for (var i = 0; i < episodes.length; i += step) {
+      final part = episodes.sublist(i, i + step > episodes.length ? episodes.length : i + step);
+      final saved = await hub.askForEpisodes(episodesRequestFor(meta, part));
+      out.addAll(saved);
+      _keep(saved);
+    }
+    return out;
   }
 
   /// Takes this user off request [id].

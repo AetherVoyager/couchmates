@@ -12,7 +12,8 @@ import '../settings/app_settings.dart';
 ///
 /// It asks the Hub for requests now and then while signed in ([every]), and also follows every reload the
 /// Search page does. Status changes on the user's own requests stay [unseen] until [markSeen] (Search shows
-/// them). A request that became Added is announced once through [arrivals]. What was seen and announced is kept
+/// them). A request that became Added is announced once through [arrivals] (one per show when several of its
+/// episodes arrive together). What was seen and announced is kept
 /// in [Settings.seenRequests], so a restart doesn't announce anything again. The first time it runs it only
 /// remembers what's there, so nothing old is announced.
 class RequestUpdates extends ChangeNotifier {
@@ -103,6 +104,8 @@ class RequestUpdates extends ChangeNotifier {
     final (seen, told) = memory;
     var changed = false;
     final unseen = <String>{};
+    // Several episodes of a show arriving together are announced once.
+    final announced = <String>{};
     for (final r in mine) {
       final before = seen[r.id];
       if (before == null) {
@@ -114,7 +117,7 @@ class RequestUpdates extends ChangeNotifier {
       }
       if (before != r.status) unseen.add(r.id);
       if (r.status == RequestStatus.added && told[r.id] != RequestStatus.added) {
-        _arrivals.add(r);
+        if (announced.add('${r.kind}/${r.titleId}')) _arrivals.add(r);
         changed = true;
       }
       if (told[r.id] != r.status) {

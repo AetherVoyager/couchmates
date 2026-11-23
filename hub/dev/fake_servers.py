@@ -176,6 +176,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/bot-hook/last":
             return self.send_json(BOT_HOOKS[-1] if BOT_HOOKS else None)
+        if self.path == "/bot-hook/all":
+            return self.send_json(BOT_HOOKS)
         if self.path.startswith("/addons/"):
             kind, _, rest = self.path.removeprefix("/addons/").partition("/")
             return self.public_addon(kind, rest)

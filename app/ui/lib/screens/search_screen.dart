@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../theme.dart';
 import '../widgets/poster.dart';
+import 'details_screen.dart';
 
 /// A search box over every catalog, with results as a poster grid. Titles in the library open as usual; the
 /// rest can be requested from the admin. With an empty box it lists the requests.
@@ -175,6 +176,17 @@ class SearchGrid extends StatelessWidget {
                   badge: const StatusChip(label: 'In library', icon: Icons.check_circle),
                 );
               }
+              if (hit.meta.isSeries) {
+                // Shows are asked for by episode, on their page.
+                final asked = session.requestsFor(hit.meta);
+                return PosterCard(
+                  meta: hit.meta,
+                  width: double.infinity,
+                  caption: true,
+                  badge: asked.isEmpty ? null : RequestGroupChip(group: RequestGroup(asked)),
+                  footer: asked.isEmpty ? _EpisodesButton(meta: hit.meta) : null,
+                );
+              }
               final request = session.requestOf(hit.meta);
               return PosterCard(
                 meta: hit.meta,
@@ -190,6 +202,21 @@ class SearchGrid extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Opens a show's page, where its episodes are asked for.
+class _EpisodesButton extends StatelessWidget {
+  const _EpisodesButton({required this.meta});
+
+  final StremioMeta meta;
+
+  @override
+  Widget build(BuildContext context) => FilledButton.tonalIcon(
+    style: FilledButton.styleFrom(visualDensity: VisualDensity.compact, backgroundColor: Colors.black87),
+    onPressed: () => openDetails(context, meta),
+    icon: const Icon(Icons.playlist_add, size: 18),
+    label: const Text('Request'),
+  );
 }
 
 class _RequestButton extends StatefulWidget {
@@ -221,18 +248,18 @@ class _RequestButtonState extends State<_RequestButton> {
   );
 }
 
-/// Asks the admin for [meta] and says how it went.
-Future<MediaRequest?> askForTitle(BuildContext context, StremioMeta meta) async {
+/// Asks the admin for [meta] (with [video], that episode of the show) and says how it went.
+Future<MediaRequest?> askForTitle(BuildContext context, StremioMeta meta, {StremioVideo? video}) async {
   final messenger = ScaffoldMessenger.maybeOf(context);
   try {
-    final saved = await context.read<HubSession>().askFor(meta);
+    final saved = await context.read<HubSession>().askFor(meta, video: video);
     final others = saved.requestedBy.length - 1;
     messenger?.showSnackBar(
       SnackBar(
         content: Text(
           others > 0
-              ? 'Added you to the request for ${saved.name}. ${others == 1 ? '1 other person' : '$others others'} asked too.'
-              : 'Requested ${saved.name}. You\'ll see here when the admin answers.',
+              ? 'Added you to the request for ${saved.label}. ${others == 1 ? '1 other person' : '$others others'} asked too.'
+              : 'Requested ${saved.label}. You\'ll see when the admin answers.',
         ),
       ),
     );
@@ -278,6 +305,20 @@ class StatusChip extends StatelessWidget {
   RequestStatus.declined => ('Declined', Icons.block, const Color(0xFFF06A6A)),
   _ => ('Requested', Icons.schedule, Cinema.muted),
 };
+
+/// The status that matters most for a show's episode requests, with how many.
+class RequestGroupChip extends StatelessWidget {
+  const RequestGroupChip({super.key, required this.group});
+
+  final RequestGroup group;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, icon, color) = requestStatusLook(group.status);
+    final n = group.requests.length;
+    return StatusChip(label: group.isEpisodes && n > 1 ? '$label · $n' : label, icon: icon, color: color);
+  }
+}
 
 class RequestStatusChip extends StatelessWidget {
   const RequestStatusChip({super.key, required this.request});
@@ -443,8 +484,9 @@ class RequestsList extends StatelessWidget {
       if (error != null) return MessageView(icon: Icons.cloud_off, message: errorText(error!), onRetry: onRetry);
       return const MessageView(icon: Icons.search, message: 'Type a title to search.');
     }
-    final mine = session.requests.where((r) => r.mine).toList();
-    final others = session.requests.where((r) => !r.mine).toList();
+    final groups = groupRequests(session.requests);
+    final mine = groups.where((g) => g.mine).toList();
+    final others = groups.where((g) => !g.mine).toList();
     if (mine.isEmpty && others.isEmpty) {
       return const MessageView(
         icon: Icons.search,
@@ -461,9 +503,9 @@ class RequestsList extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           if (mine.isNotEmpty) heading('Your requests'),
-          for (final r in mine) _RequestTile(request: r, padding: padding),
+          for (final g in mine) _RequestTile(group: g, padding: padding),
           if (others.isNotEmpty) heading('Friends asked for'),
-          for (final r in others) _RequestTile(request: r, padding: padding),
+          for (final g in others) _RequestTile(group: g, padding: padding),
         ],
       ),
     );
@@ -471,24 +513,19 @@ class RequestsList extends StatelessWidget {
 }
 
 class _RequestTile extends StatelessWidget {
-  const _RequestTile({required this.request, required this.padding});
+  const _RequestTile({required this.group, required this.padding});
 
-  final MediaRequest request;
+  final RequestGroup group;
   final double padding;
-
-  StremioMeta get _meta => StremioMeta(
-    id: request.titleId,
-    type: request.kind,
-    name: request.name,
-    poster: request.poster,
-    releaseInfo: request.year,
-  );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final r = request;
-    final subtitle = [r.kind == 'series' ? 'Series' : 'Movie', ?r.year, _requestLine(r)].join(' · ');
+    final r = group.first;
+    final episodes = group.episodesText;
+    final who = group.isEpisodes ? null : _requestLine(r);
+    final subtitle = [r.kind == 'series' ? 'Series' : 'Movie', ?r.year, ?episodes, ?who].join(' · ');
+    final notes = {for (final x in group.requests) ?x.note}.toList();
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: padding, vertical: 4),
       leading: SizedBox(
@@ -503,11 +540,13 @@ class _RequestTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: Cinema.muted)),
-          if (r.note != null) Text('Admin: ${r.note}', style: theme.textTheme.bodySmall),
+          for (final n in notes.take(2)) Text('Admin: $n', style: theme.textTheme.bodySmall),
         ],
       ),
-      trailing: RequestStatusChip(request: r),
-      onTap: () => showRequestSheet(context, _meta),
+      trailing: group.isEpisodes ? RequestGroupChip(group: group) : RequestStatusChip(request: r),
+      onTap: () => group.isEpisodes || r.kind == 'series'
+          ? Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DetailsScreen(item: group.meta)))
+          : showRequestSheet(context, group.meta),
     );
   }
 }

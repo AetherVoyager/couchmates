@@ -699,6 +699,13 @@ async fn requests_page_with(
             name: &r.name,
             year: r.year.as_deref(),
             poster: r.poster.as_deref(),
+            episode: match (r.season, r.episode) {
+                (Some(s), Some(e)) => Some(match r.episode_title.as_deref() {
+                    Some(title) => format!("S{s} E{e} · {title}"),
+                    None => format!("S{s} E{e}"),
+                }),
+                _ => None,
+            },
             status: &r.status,
             note: r.note.as_deref(),
             requested_by: r.requester_names(),

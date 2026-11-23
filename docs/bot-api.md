@@ -28,6 +28,10 @@ Every call sends `Authorization: Bearer <token>`. Failures answer with a 4xx sta
 - A `MediaRequest` is the app API's shape (`core/src/api.rs`, sample `core/contract/media_request.json`):
   `id`, `kind` (`movie` or `series`), `title_id` (usually the IMDb id), `name`, `year`, `poster`, `status`, `note`,
   `requested_by` (display names), `created_at`, `updated_at`.
+- **Shows are requested by episode.** A series request has `season` and `episode` (numbers) and often
+  `episode_title`; each episode is its own request with its own id and status, so add and answer them one at a
+  time (sample `core/contract/media_request_episode.json`). The Stremio video id is `<title_id>:<season>:<episode>`.
+  A series request without `season` and `episode` is a whole show, from an app older than 0.7.
 
 ## Status, so you can see what the bot is doing
 
@@ -47,7 +51,8 @@ call("/api/bot/status", {"state": "working", "activity": "Adding Dune", "events"
 ## Webhook
 
 `POST <your address>` with `content-type: application/json`, `x-couchmates-event: request.created` and a body like
-`core/contract/bot_webhook.json`: `{"event": "request.created", "request": MediaRequest}`. Answer with any 2xx
+`core/contract/bot_webhook.json`: `{"event": "request.created", "request": MediaRequest}`. Asking for several
+episodes at once sends one webhook per new episode, all at the same moment. Answer with any 2xx
 within 4 seconds; the Hub doesn't retry, so poll now and then as well to catch anything missed.
 
 `x-couchmates-signature` is `sha256=` plus the hex HMAC-SHA256 of the raw body, keyed with the hex SHA-256 of your

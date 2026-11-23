@@ -13,6 +13,8 @@ pub struct Request<'a> {
     pub name: &'a str,
     pub year: Option<&'a str>,
     pub poster: Option<&'a str>,
+    /// "S2 E5 · Breakage" for one episode of a show.
+    pub episode: Option<String>,
     pub status: &'a str,
     pub note: Option<&'a str>,
     pub requested_by: Vec<String>,
@@ -112,7 +114,8 @@ pub fn page(requests: &[Request], filter: &str, pending: i64, bot: &BotAccess, f
         h1 { "Requests" }
         div.card {
             p.muted style="margin-top:0" {
-                "Titles friends asked for from the app's search because they aren't in the library. "
+                "Titles friends asked for from the app because they aren't in the library; shows are asked for "
+                "one episode at a time. "
                 "Nothing is downloaded for a request: add the title to Telegram-Stremio yourself, then mark it Added. "
                 "Whoever asked sees the status and your note in the app. Once an hour the Hub also checks "
                 "Telegram-Stremio and marks waiting requests Added when their title is there."
@@ -147,6 +150,7 @@ pub fn page(requests: &[Request], filter: &str, pending: i64, bot: &BotAccess, f
                             h2 style="margin:0" {
                                 (r.name) @if let Some(y) = r.year { " " span.muted { "(" (y) ")" } }
                             }
+                            @if let Some(ep) = &r.episode { span.pill.warn { (ep) } }
                             span.pill { @if r.kind == "series" { "Series" } @else { "Movie" } }
                             (status_pill(r.status))
                         }
@@ -210,6 +214,7 @@ mod tests {
             name: "<script>x</script>",
             year: Some("1999"),
             poster: None,
+            episode: Some("S1 E2 · <b>".into()),
             status: "pending",
             note: None,
             requested_by: vec!["Alice".into(), "Bob".into()],
@@ -221,6 +226,7 @@ mod tests {
         assert!(html.contains("tok&lt;en") && html.contains("https://hub/api/bot/requests"));
         assert!(!html.contains("<script>x"));
         assert!(html.contains("Asked by Alice, Bob"));
+        assert!(html.contains("S1 E2 · &lt;b&gt;"));
         assert!(html.contains("/requests/abc/status"));
         for answer in ["Approve", "Mark added", "Decline", "Save note"] {
             assert!(html.contains(answer), "{answer}");

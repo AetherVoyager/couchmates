@@ -16,7 +16,7 @@ RequestUpdates requestUpdatesWithNotices({
     messenger.currentState?.showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 12),
-        content: Text('${r.name} is in the library now. You asked for it.'),
+        content: Text('${r.label} is in the library now. You asked for it.'),
         action: SnackBarAction(
           label: 'Watch',
           onPressed: () =>

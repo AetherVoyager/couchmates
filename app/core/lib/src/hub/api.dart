@@ -35,6 +35,7 @@ abstract final class HubPaths {
   static const chatLive = '/api/app/chat/live';
   static const requests = '/api/app/requests';
   static const requestsCancel = '/api/app/requests/cancel';
+  static const requestsEpisodes = '/api/app/requests/episodes';
 }
 
 class LoginRequest {
@@ -1058,7 +1059,8 @@ abstract final class RequestStatus {
   static const declined = 'declined';
 }
 
-/// A title someone asked the admin to add. One per title; friends asking for the same one share it.
+/// A title someone asked the admin to add: a movie, one episode of a show ([season] and [episode]), or a whole
+/// show (from older apps). One per title or episode; friends asking for the same one share it.
 class MediaRequest {
   const MediaRequest({
     required this.id,
@@ -1067,6 +1069,9 @@ class MediaRequest {
     required this.name,
     this.year,
     this.poster,
+    this.season,
+    this.episode,
+    this.episodeTitle,
     required this.status,
     this.note,
     this.requestedBy = const [],
@@ -1086,6 +1091,11 @@ class MediaRequest {
   final String? year;
   final String? poster;
 
+  /// For one episode of a show.
+  final int? season;
+  final int? episode;
+  final String? episodeTitle;
+
   /// One of [RequestStatus].
   final String status;
 
@@ -1103,6 +1113,12 @@ class MediaRequest {
   /// Still waiting on the admin.
   bool get open => status == RequestStatus.pending || status == RequestStatus.approved;
 
+  /// Whether it's for one episode.
+  bool get isEpisode => season != null && episode != null;
+
+  /// "Breaking Bad S2 E5", or the name.
+  String get label => isEpisode ? '$name S$season E$episode' : name;
+
   factory MediaRequest.fromJson(Json j) => MediaRequest(
     id: j['id'] as String,
     kind: j['kind'] as String,
@@ -1110,6 +1126,9 @@ class MediaRequest {
     name: j['name'] as String,
     year: j['year'] as String?,
     poster: j['poster'] as String?,
+    season: (j['season'] as num?)?.toInt(),
+    episode: (j['episode'] as num?)?.toInt(),
+    episodeTitle: j['episode_title'] as String?,
     status: j['status'] as String,
     note: j['note'] as String?,
     requestedBy: [for (final n in j['requested_by'] as List? ?? const []) n as String],
@@ -1125,6 +1144,9 @@ class MediaRequest {
     'name': name,
     'year': ?year,
     'poster': ?poster,
+    'season': ?season,
+    'episode': ?episode,
+    'episode_title': ?episodeTitle,
     'status': status,
     'note': ?note,
     'requested_by': requestedBy,
@@ -1146,7 +1168,16 @@ class MediaRequests {
 }
 
 class MediaRequestCreate {
-  const MediaRequestCreate({required this.kind, required this.titleId, required this.name, this.year, this.poster});
+  const MediaRequestCreate({
+    required this.kind,
+    required this.titleId,
+    required this.name,
+    this.year,
+    this.poster,
+    this.season,
+    this.episode,
+    this.episodeTitle,
+  });
 
   final String kind;
   final String titleId;
@@ -1154,15 +1185,85 @@ class MediaRequestCreate {
   final String? year;
   final String? poster;
 
+  /// With [episode], one episode of a series.
+  final int? season;
+  final int? episode;
+  final String? episodeTitle;
+
   factory MediaRequestCreate.fromJson(Json j) => MediaRequestCreate(
     kind: j['kind'] as String,
     titleId: j['title_id'] as String,
     name: j['name'] as String,
     year: j['year'] as String?,
     poster: j['poster'] as String?,
+    season: (j['season'] as num?)?.toInt(),
+    episode: (j['episode'] as num?)?.toInt(),
+    episodeTitle: j['episode_title'] as String?,
   );
 
-  Json toJson() => {'kind': kind, 'title_id': titleId, 'name': name, 'year': ?year, 'poster': ?poster};
+  Json toJson() => {
+    'kind': kind,
+    'title_id': titleId,
+    'name': name,
+    'year': ?year,
+    'poster': ?poster,
+    'season': ?season,
+    'episode': ?episode,
+    'episode_title': ?episodeTitle,
+  };
+}
+
+/// One episode in a [MediaRequestEpisodes].
+class EpisodeAsk {
+  const EpisodeAsk({required this.season, required this.episode, this.title});
+
+  final int season;
+  final int episode;
+  final String? title;
+
+  factory EpisodeAsk.fromJson(Json j) => EpisodeAsk(
+    season: (j['season'] as num).toInt(),
+    episode: (j['episode'] as num).toInt(),
+    title: j['title'] as String?,
+  );
+
+  Json toJson() => {'season': season, 'episode': episode, 'title': ?title};
+}
+
+/// Several episodes of one series asked for at once (at most [maxEpisodes]).
+class MediaRequestEpisodes {
+  const MediaRequestEpisodes({
+    required this.titleId,
+    required this.name,
+    this.year,
+    this.poster,
+    required this.episodes,
+  });
+
+  /// The most the Hub takes in one call.
+  static const maxEpisodes = 40;
+
+  final String titleId;
+  final String name;
+  final String? year;
+  final String? poster;
+  final List<EpisodeAsk> episodes;
+
+  factory MediaRequestEpisodes.fromJson(Json j) => MediaRequestEpisodes(
+    titleId: j['title_id'] as String,
+    name: j['name'] as String,
+    year: j['year'] as String?,
+    poster: j['poster'] as String?,
+    episodes: [for (final e in j['episodes'] as List? ?? const []) EpisodeAsk.fromJson(e as Json)],
+  );
+
+  Json toJson() => {
+    'title_id': titleId,
+    'name': name,
+    'year': ?year,
+    'poster': ?poster,
+    'episodes': episodes.map((e) => e.toJson()).toList(),
+  };
 }
 
 class MediaRequestCancel {

@@ -120,6 +120,9 @@ class AddonSet extends StremioClient {
     ];
   }
 
+  /// Whether one of the public add-ons can play this title, so it's watchable without being in the catalog.
+  Future<bool> streamsElsewhere(String type, String id) async => (await _offering('stream', type, id)).isNotEmpty;
+
   @override
   Future<StremioMeta?> meta(String type, String id) async {
     Object? ownError;

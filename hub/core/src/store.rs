@@ -223,6 +223,12 @@ pub struct MediaRequestRow {
     pub year: Option<String>,
     #[serde(default)]
     pub poster: Option<String>,
+    #[serde(default)]
+    pub season: Option<u32>,
+    #[serde(default)]
+    pub episode: Option<u32>,
+    #[serde(default)]
+    pub episode_title: Option<String>,
     pub status: String,
     #[serde(default)]
     pub note: Option<String>,
@@ -239,7 +245,8 @@ impl MediaRequestRow {
 }
 
 /// The columns of a [MediaRequestRow] from `media_requests r`, for user ?1.
-const REQUEST_SELECT: &str = "SELECT r.id, r.kind, r.title_id, r.name, r.year, r.poster, r.status, r.note, \
+const REQUEST_SELECT: &str = "SELECT r.id, r.kind, r.title_id, r.name, r.year, r.poster, r.season, r.episode, \
+     r.episode_title, r.status, r.note, \
      r.created_at, r.updated_at, (SELECT json_group_array(name) FROM (SELECT u.name FROM media_request_users x \
      JOIN users u ON u.id = x.user_id WHERE x.request_id = r.id ORDER BY x.created_at, x.rowid)) AS requested_by, \
      EXISTS (SELECT 1 FROM media_request_users x WHERE x.request_id = r.id AND x.user_id = ?1) AS mine \
@@ -247,6 +254,35 @@ const REQUEST_SELECT: &str = "SELECT r.id, r.kind, r.title_id, r.name, r.year, r
 
 fn opt_s(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, s)
+}
+
+/// What a request is for, besides its title: `""` for a movie or a whole show, `"season:episode"` for one
+/// episode. Requests are unique by kind, title and slot.
+pub fn request_slot(season: Option<u32>, episode: Option<u32>) -> String {
+    match (season, episode) {
+        (Some(s), Some(e)) => format!("{s}:{e}"),
+        _ => String::new(),
+    }
+}
+
+/// A title to ask for, and the episodes of it (none: the movie or the whole show).
+pub struct TitleAsk<'a> {
+    pub kind: &'a str,
+    pub title_id: &'a str,
+    pub name: &'a str,
+    pub year: Option<&'a str>,
+    pub poster: Option<&'a str>,
+    /// (season, episode, episode name).
+    pub episodes: Vec<(u32, u32, Option<&'a str>)>,
+}
+
+impl TitleAsk<'_> {
+    pub fn slots(&self) -> Vec<String> {
+        if self.episodes.is_empty() {
+            return vec![String::new()];
+        }
+        self.episodes.iter().map(|(s, e, _)| request_slot(Some(*s), Some(*e))).collect()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -995,12 +1031,35 @@ impl Store {
             args.extend(statuses.iter().map(|st| s(st)));
             format!(" WHERE r.status IN ({})", marks.join(", "))
         };
-        self.all(&format!("{REQUEST_SELECT}{filter} ORDER BY r.updated_at DESC LIMIT 300"), &args).await
+        self.all(
+            &format!("{REQUEST_SELECT}{filter} ORDER BY r.updated_at DESC, r.title_id, r.season, r.episode LIMIT 1000"),
+            &args,
+        )
+        .await
     }
 
-    pub async fn media_request_for_title(&self, kind: &str, title_id: &str) -> Result<Option<MediaRequestRow>> {
-        self.first(&format!("{REQUEST_SELECT} WHERE r.kind = ?2 AND r.title_id = ?3"), &[s(""), s(kind), s(title_id)])
-            .await
+    /// The requests for these [slots] of a title, as [user_id] sees them, in episode order.
+    pub async fn media_requests_for_slots(
+        &self,
+        user_id: &str,
+        kind: &str,
+        title_id: &str,
+        slots: &[String],
+    ) -> Result<Vec<MediaRequestRow>> {
+        if slots.is_empty() {
+            return Ok(vec![]);
+        }
+        let marks: Vec<String> = (0..slots.len()).map(|i| format!("?{}", i + 4)).collect();
+        let mut args = vec![s(user_id), s(kind), s(title_id)];
+        args.extend(slots.iter().map(|x| s(x)));
+        self.all(
+            &format!(
+                "{REQUEST_SELECT} WHERE r.kind = ?2 AND r.title_id = ?3 AND r.slot IN ({}) ORDER BY r.season, r.episode",
+                marks.join(", ")
+            ),
+            &args,
+        )
+        .await
     }
 
     pub async fn media_request(&self, id: &str, user_id: &str) -> Result<Option<MediaRequestRow>> {
@@ -1034,45 +1093,56 @@ impl Store {
         Ok(row.map_or(0, |r| r.count))
     }
 
-    /// Asks for a title for [user_id]: a new pending request, or their name added to the one there is. A
-    /// declined title asked for again goes back to pending without the old note.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn ask_for_title(
-        &self,
-        user_id: &str,
-        kind: &str,
-        title_id: &str,
-        name: &str,
-        year: Option<&str>,
-        poster: Option<&str>,
-    ) -> Result<Option<MediaRequestRow>> {
+    /// Asks for a title, or some of its episodes, for [user_id]: a new pending request for each, or their name
+    /// added to the one there is. A declined one asked for again goes back to pending without the old note.
+    /// Returns the requests asked for, in episode order.
+    pub async fn ask_for(&self, user_id: &str, ask: &TitleAsk<'_>) -> Result<Vec<MediaRequestRow>> {
         let at = n(now() as f64);
-        self.db
-            .batch(vec![
+        let slots = ask.slots();
+        let mut statements = Vec::with_capacity(slots.len() * 2);
+        let whole = [(0, 0, None)];
+        let parts: &[(u32, u32, Option<&str>)] = if ask.episodes.is_empty() { &whole } else { &ask.episodes };
+        for ((season, episode, title), slot) in parts.iter().zip(&slots) {
+            let (season, episode) =
+                if slot.is_empty() { (JsValue::NULL, JsValue::NULL) } else { (n(*season as f64), n(*episode as f64)) };
+            statements.push(
                 self.db
                     .prepare(
-                        "INSERT INTO media_requests (id, kind, title_id, name, year, poster, status, created_at, \
-                         updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?7) \
-                         ON CONFLICT(kind, title_id) DO UPDATE SET \
+                        "INSERT INTO media_requests (id, kind, title_id, name, year, poster, season, episode, \
+                         episode_title, slot, status, created_at, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11, ?11) \
+                         ON CONFLICT(kind, title_id, slot) DO UPDATE SET \
                          status = CASE WHEN status = 'declined' THEN 'pending' ELSE status END, \
                          note = CASE WHEN status = 'declined' THEN NULL ELSE note END, \
                          updated_at = CASE WHEN status = 'declined' THEN excluded.updated_at ELSE updated_at END, \
-                         year = COALESCE(year, excluded.year), poster = COALESCE(poster, excluded.poster)",
+                         year = COALESCE(year, excluded.year), poster = COALESCE(poster, excluded.poster), \
+                         episode_title = COALESCE(episode_title, excluded.episode_title)",
                     )
-                    .bind(&[s(&random_id()), s(kind), s(title_id), s(name), opt_s(year), opt_s(poster), at.clone()])?,
+                    .bind(&[
+                        s(&random_id()),
+                        s(ask.kind),
+                        s(ask.title_id),
+                        s(ask.name),
+                        opt_s(ask.year),
+                        opt_s(ask.poster),
+                        season,
+                        episode,
+                        opt_s(*title),
+                        s(slot),
+                        at.clone(),
+                    ])?,
+            );
+            statements.push(
                 self.db
                     .prepare(
                         "INSERT OR IGNORE INTO media_request_users (request_id, user_id, created_at) \
-                         SELECT id, ?1, ?2 FROM media_requests WHERE kind = ?3 AND title_id = ?4",
+                         SELECT id, ?1, ?2 FROM media_requests WHERE kind = ?3 AND title_id = ?4 AND slot = ?5",
                     )
-                    .bind(&[s(user_id), at, s(kind), s(title_id)])?,
-            ])
-            .await?;
-        self.first(
-            &format!("{REQUEST_SELECT} WHERE r.kind = ?2 AND r.title_id = ?3"),
-            &[s(user_id), s(kind), s(title_id)],
-        )
-        .await
+                    .bind(&[s(user_id), at.clone(), s(ask.kind), s(ask.title_id), s(slot)])?,
+            );
+        }
+        self.db.batch(statements).await?;
+        self.media_requests_for_slots(user_id, ask.kind, ask.title_id, &slots).await
     }
 
     /// Takes [user_id] off a request; a pending one nobody wants any more goes.

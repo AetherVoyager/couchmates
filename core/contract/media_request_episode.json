@@ -1,0 +1,17 @@
+{
+  "id": "0123456789abcdef",
+  "kind": "series",
+  "title_id": "tt0903747",
+  "name": "Breaking Bad",
+  "year": "2008–2013",
+  "poster": "https://images.metahub.space/poster/medium/tt0903747/img",
+  "season": 2,
+  "episode": 5,
+  "episode_title": "Breakage",
+  "status": "approved",
+  "note": "Adding season 2 tonight",
+  "requested_by": ["Alice B."],
+  "mine": false,
+  "created_at": 1700000100,
+  "updated_at": 1700000300
+}

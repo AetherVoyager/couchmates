@@ -206,6 +206,9 @@ class HubClient {
   Future<MediaRequest> askForTitle(MediaRequestCreate request) async =>
       MediaRequest.fromJson(await _send('POST', HubPaths.requests, body: request.toJson()));
 
+  Future<List<MediaRequest>> askForEpisodes(MediaRequestEpisodes request) async =>
+      MediaRequests.fromJson(await _send('POST', HubPaths.requestsEpisodes, body: request.toJson())).requests;
+
   Future<void> withdrawRequest(String id) async {
     await _send('POST', HubPaths.requestsCancel, body: MediaRequestCancel(id: id).toJson());
   }

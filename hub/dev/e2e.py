@@ -395,6 +395,30 @@ check("alice sees it added with a note; the other stays pending",
 for r in (bunny, missing):
     call(b, f"/requests/{r.get('id')}/delete", form={})
 
+# --- Shows are asked for one episode at a time; the check marks the episodes the server has
+SHOW = {"title_id": "tt9999990", "name": "Blender Shorts", "year": "2008-2010"}
+s, _, body = call(anon, "/api/app/requests/episodes", data={**SHOW, "episodes": [
+    {"season": 1, "episode": 2, "title": "Sintel"}, {"season": 1, "episode": 3}, {"season": 1, "episode": 2}]}, headers=auth)
+eps = json.loads(body)["requests"] if s == 200 else []
+check("alice asks for two episodes in one go", [(r.get("season"), r.get("episode"), r.get("episode_title")) for r in eps]
+      == [(1, 2, "Sintel"), (1, 3, None)] and all(r["kind"] == "series" and r["mine"] for r in eps), body)
+s, _, body = call(anon, "/api/app/requests", data={"kind": "series", **SHOW, "season": 1, "episode": 3}, headers=bob)
+check("bob joins one episode's request", s == 200 and json.loads(body)["id"] == (eps[1]["id"] if len(eps) > 1 else None)
+      and len(json.loads(body)["requested_by"]) == 2, body)
+s, _, body = call(anon, "/api/app/requests", data={"kind": "series", **SHOW, "season": 1}, headers=bob)
+check("a season without an episode is refused", s == 400, body)
+s, _, body = call(anon, "/api/app/requests/episodes", data={**SHOW, "episodes": [{"season": 1, "episode": e} for e in range(1, 42)]}, headers=bob)
+check("more than 40 episodes at once is refused", s == 400, body)
+s, _, page = call(b, "/requests")
+check("the dashboard shows the episode", "S1 E2 · Sintel" in page and "S1 E3" in page)
+s, hd, _ = call(b, "/requests/check", form={})
+check("Check library now marks the episode the server has", "Blender Shorts S1 E2 is in the library now" in urllib.parse.unquote_plus(hd.get("location", "")), hd.get("location"))
+got = {r["id"]: r for r in json.loads(call(anon, "/api/app/requests", headers=auth)[2])["requests"]}
+check("the episode the server lacks stays pending", len(eps) == 2 and got.get(eps[0]["id"], {}).get("status") == "added"
+      and got.get(eps[1]["id"], {}).get("status") == "pending", got)
+for r in eps:
+    call(b, f"/requests/{r.get('id')}/delete", form={})
+
 # --- The bot API: the admin's own program answers requests
 FAKE = "http://127.0.0.1:8899"
 s, _, body = call(anon, "/api/bot/requests")
@@ -417,6 +441,18 @@ hook = json.loads(urllib.request.urlopen(FAKE + "/bot-hook/last").read() or "nul
 sig = "sha256=" + hmac.new(hashlib.sha256(bot_tok.encode()).hexdigest().encode(), hook.get("body", "").encode(), hashlib.sha256).hexdigest()
 check("a new request reaches the bot's webhook, signed", hook.get("event") == "request.created"
       and json.loads(hook["body"])["request"]["id"] == req4.get("id") and hook.get("signature") == sig, hook)
+before = len(json.loads(urllib.request.urlopen(FAKE + "/bot-hook/all").read()))
+s, _, body = call(anon, "/api/app/requests/episodes", data={"title_id": "tt0903747", "name": "Breaking Bad",
+    "episodes": [{"season": 2, "episode": 1}, {"season": 2, "episode": 2}]}, headers=bob)
+ep_ids = [r["id"] for r in json.loads(body)["requests"]] if s == 200 else []
+hooks = json.loads(urllib.request.urlopen(FAKE + "/bot-hook/all").read())[before:]
+sent = sorted((json.loads(h["body"])["request"]["season"], json.loads(h["body"])["request"]["episode"]) for h in hooks)
+check("each new episode reaches the webhook with its numbers", sent == [(2, 1), (2, 2)], hooks)
+s, _, body = call(anon, "/api/bot/requests", headers=botauth)
+check("the bot lists episode requests with their numbers",
+      any(r["id"] in ep_ids and r.get("season") == 2 and r.get("episode") == 1 for r in json.loads(body)["requests"]), body)
+for i in ep_ids:
+    call(b, f"/requests/{i}/delete", form={})
 s, _, body = call(anon, "/api/bot/requests?status=pending", headers=botauth)
 check("the bot lists pending requests", s == 200 and req4.get("id") in [r["id"] for r in json.loads(body)["requests"]], body)
 s, _, body = call(anon, "/api/bot/requests?status=downloading", headers=botauth)

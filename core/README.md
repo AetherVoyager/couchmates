@@ -29,6 +29,6 @@ Signed-in calls send `Authorization: Bearer <device token>`. Failures answer wit
 | `GET /api/app/credits` | Cast, crew, age rating, tagline, studios and trailers from TMDB |
 | `POST /api/app/presence` | Say what's playing (or that the app is open); get who else is watching what |
 | `POST /api/app/join-requests{,/answer,/cancel}` | Ask to join someone's watch; accept, decline or withdraw |
-| `GET /api/app/requests`, `POST /api/app/requests{,/cancel}` | Titles friends asked the admin to add, with status; ask for one or withdraw |
+| `GET /api/app/requests`, `POST /api/app/requests{,/episodes,/cancel}` | Titles and episodes friends asked the admin to add, with status; ask for one or several episodes, or withdraw |
 
 Adding or changing a call: see "Changing the app API" in `CLAUDE.md`.

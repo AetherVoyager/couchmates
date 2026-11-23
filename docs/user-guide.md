@@ -24,7 +24,11 @@ Updates arrive in the app: when a new version is out, home shows **Update now**.
   starts reading when you rest the mouse on a movie's poster. Shows have seasons, episodes and a shuffle button.
 - **Search** finds any movie or show, not just what's in the library. Titles you can play now say **In library**.
   For anything else, press **Request** to ask your host to add it; if a friend already asked, you're added to their
-  request. With the search box empty, Search lists the requests and their status: *Requested*, *Approved*, *Added* or
+  request. Shows are asked for one episode at a time: a show's page lists its episodes with a **Request** button
+  each, plus buttons for a whole season or every episode. The same goes for titles in the add-on rows on Home
+  (such as Cinemeta's popular movies): if one isn't in the library, its page offers **Request** instead of Play.
+  A show that is in the library but lacks some episodes lists them under **Episodes missing**, with **Request all
+  missing**. Episodes that haven't aired yet and specials can't be requested. With the search box empty, Search lists the requests and their status: *Requested*, *Approved*, *Added* or
   *Declined*, with your host's note. Click one to withdraw yours. When your host answers one of yours, a dot shows on
   **Search** until you look, and when a title you asked for reaches the library the app tells you, with a **Watch**
   button.

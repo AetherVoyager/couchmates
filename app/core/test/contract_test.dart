@@ -60,6 +60,9 @@ void main() {
     roundTrips('media_request.json', (j) => MediaRequest.fromJson(j).toJson());
     roundTrips('media_request_create.json', (j) => MediaRequestCreate.fromJson(j).toJson());
     roundTrips('media_request_cancel.json', (j) => MediaRequestCancel.fromJson(j).toJson());
+    roundTrips('media_request_episode.json', (j) => MediaRequest.fromJson(j).toJson());
+    roundTrips('media_request_create_episode.json', (j) => MediaRequestCreate.fromJson(j).toJson());
+    roundTrips('media_request_episodes.json', (j) => MediaRequestEpisodes.fromJson(j).toJson());
   });
 
   group('rules match the shared contract', () {

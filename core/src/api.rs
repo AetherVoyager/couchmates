@@ -36,6 +36,7 @@
 //! | `GET /api/app/chat/live` (WebSocket) | | a stream of [`ChatEvent`] text frames |
 //! | `GET /api/app/requests` | | [`MediaRequests`] |
 //! | `POST /api/app/requests` | [`MediaRequestCreate`] | [`MediaRequest`] |
+//! | `POST /api/app/requests/episodes` | [`MediaRequestEpisodes`] | [`MediaRequests`] |
 //! | `POST /api/app/requests/cancel` | [`MediaRequestCancel`] | [`OkResponse`] |
 
 use serde::{Deserialize, Serialize};
@@ -72,6 +73,7 @@ pub mod paths {
     pub const CHAT_LIVE: &str = "/api/app/chat/live";
     pub const REQUESTS: &str = "/api/app/requests";
     pub const REQUESTS_CANCEL: &str = "/api/app/requests/cancel";
+    pub const REQUESTS_EPISODES: &str = "/api/app/requests/episodes";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -572,8 +574,9 @@ pub mod request_status {
     pub const ALL: &[&str] = &[PENDING, APPROVED, ADDED, DECLINED];
 }
 
-/// A title someone asked the admin to add to the library. There is one per title: friends asking for the same
-/// one are listed together in [`MediaRequest::requested_by`].
+/// A title someone asked the admin to add to the library: a movie, one episode of a show (with `season` and
+/// `episode`), or a whole show (older apps). There is one per title or episode: friends asking for the same one
+/// are listed together in [`MediaRequest::requested_by`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MediaRequest {
     pub id: String,
@@ -588,6 +591,15 @@ pub struct MediaRequest {
     /// An https poster link from the catalog that found it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poster: Option<String>,
+    /// For one episode of a show: its season number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<u32>,
+    /// For one episode of a show: its number in the season.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<u32>,
+    /// The episode's name, when the catalog knew it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode_title: Option<String>,
     /// One of [`request_status::ALL`].
     pub status: String,
     /// The admin's note to whoever asked.
@@ -619,6 +631,35 @@ pub struct MediaRequestCreate {
     pub year: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poster: Option<String>,
+    /// With `episode`, asks for one episode of a series.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode_title: Option<String>,
+}
+
+/// One episode in a [`MediaRequestEpisodes`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EpisodeAsk {
+    pub season: u32,
+    pub episode: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+/// Asks for several episodes of one series at once (at most 40), such as a season or the episodes the library
+/// is missing. Each episode is its own request; the answer lists them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaRequestEpisodes {
+    pub title_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<String>,
+    pub episodes: Vec<EpisodeAsk>,
 }
 
 /// The bot API's answer to a request (`POST /api/bot/requests/update`, see `hub/core/src/bot.rs`). Without
@@ -741,6 +782,9 @@ mod tests {
         round_trips::<MediaRequest>(include_str!("../contract/media_request.json"));
         round_trips::<MediaRequestCreate>(include_str!("../contract/media_request_create.json"));
         round_trips::<MediaRequestCancel>(include_str!("../contract/media_request_cancel.json"));
+        round_trips::<MediaRequest>(include_str!("../contract/media_request_episode.json"));
+        round_trips::<MediaRequestCreate>(include_str!("../contract/media_request_create_episode.json"));
+        round_trips::<MediaRequestEpisodes>(include_str!("../contract/media_request_episodes.json"));
         round_trips::<MediaRequestUpdate>(include_str!("../contract/media_request_update.json"));
         round_trips::<BotWebhook>(include_str!("../contract/bot_webhook.json"));
         round_trips::<BotStatus>(include_str!("../contract/bot_status.json"));

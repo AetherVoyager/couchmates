@@ -69,6 +69,7 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             (Method::Get, "requests") => requests::list(req, &store).await,
             (Method::Post, "requests") => requests::create(req, &store).await,
             (Method::Post, "requests/cancel") => requests::cancel(req, &store).await,
+            (Method::Post, "requests/episodes") => requests::create_episodes(req, &store).await,
             _ => web::json_error("Not found", 404),
         };
     }
