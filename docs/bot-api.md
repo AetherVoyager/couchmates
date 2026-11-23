@@ -20,6 +20,7 @@ Every call sends `Authorization: Bearer <token>`. Failures answer with a 4xx sta
 |---|---|---|
 | `GET /api/bot/requests?status=open` | | `{"requests": [MediaRequest, ...]}`, most recently changed first |
 | `POST /api/bot/requests/update` | `{"id", "status", "note"?}` | the `MediaRequest` as it is now |
+| `POST /api/bot/status` | `{"state", "activity"?, "version"?, "events"?}` | `{"ok": true}` |
 
 - `status=` is `pending`, `approved`, `added`, `declined`, `open` (pending or approved; the default) or `all`.
 - An update's `status` is `pending`, `approved`, `added` or `declined`. Without `note` the request keeps its note;
@@ -27,6 +28,21 @@ Every call sends `Authorization: Bearer <token>`. Failures answer with a 4xx sta
 - A `MediaRequest` is the app API's shape (`core/src/api.rs`, sample `core/contract/media_request.json`):
   `id`, `kind` (`movie` or `series`), `title_id` (usually the IMDb id), `name`, `year`, `poster`, `status`, `note`,
   `requested_by` (display names), `created_at`, `updated_at`.
+
+## Status, so you can see what the bot is doing
+
+Report about every 30 seconds and the Overview page's **Request bot** card shows it: online, working or in error,
+what it's doing, and the latest events. A bot that hasn't reported for 2½ minutes shows as **Offline**.
+
+- `state` is `idle`, `working` or `error`. `activity` is one sentence (cut at 200 characters). `version` is yours.
+- `events` is what happened since the last report: `{"at": <unix seconds>, "level": "info" | "error", "message": "…"}`.
+  Up to 20 per report; the Hub keeps the latest 50. A missing or future `at` becomes the time the Hub got it.
+- **Turn off bot access** clears the status and events.
+
+```python
+call("/api/bot/status", {"state": "working", "activity": "Adding Dune", "events": [
+    {"at": int(time.time()), "level": "error", "message": "Search bot didn't answer"}]})
+```
 
 ## Webhook
 

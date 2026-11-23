@@ -1,0 +1,9 @@
+{
+  "state": "working",
+  "activity": "Adding Dune (S01E03, 3 of 6)",
+  "version": "1.1",
+  "events": [
+    {"at": 1700000300, "level": "info", "message": "Added Dune Part Two"},
+    {"at": 1700000360, "level": "error", "message": "Search bot didn't answer, will retry"}
+  ]
+}

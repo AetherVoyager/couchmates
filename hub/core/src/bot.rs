@@ -6,6 +6,10 @@
 //! |---|---|---|
 //! | `GET /api/bot/requests?status=open` | | [`MediaRequests`] |
 //! | `POST /api/bot/requests/update` | [`MediaRequestUpdate`] | [`MediaRequest`] |
+//! | `POST /api/bot/status` | [`BotStatus`] | `{"ok": true}` |
+//!
+//! `status` is the bot's heartbeat: what it's doing and what recently happened. The Overview page shows it, and
+//! calls the bot offline when it hasn't reported for [`ONLINE_SECS`].
 //!
 //! `status` filters by `pending`, `approved`, `added`, `declined`, `open` (pending or approved, the default) or
 //! `all`. When a webhook address is saved, a new request (or a declined one asked for again) is also POSTed there
@@ -16,22 +20,34 @@
 
 use std::time::Duration;
 
-use couchmates_core::api::{BotWebhook, MediaRequest, MediaRequestUpdate, MediaRequests, request_status};
+use couchmates_core::api::{
+    BotEvent, BotStatus, BotWebhook, MediaRequest, MediaRequestUpdate, MediaRequests, OkResponse, request_status,
+};
 use futures_util::future::{Either, select};
 use hmac::{Hmac, KeyInit, Mac};
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use worker::{Delay, Fetch, Headers, Method, Request, RequestInit, Response, Result};
 
 use crate::crypto::{password_matches, sha256_hex};
 use crate::requests::{MAX_NOTE, to_api};
-use crate::store::Store;
+use crate::store::{Store, now};
 use crate::web::{self, json_error};
 
 /// The SHA-256 (hex) of the bot token. Not a secret by itself.
 pub const TOKEN_HASH: &str = "bot_token_hash";
 /// Where new requests are POSTed. Sealed, since such links often carry a key.
 pub const WEBHOOK: &str = "bot_webhook_url";
+/// The bot's last report ([`StoredBot`] as JSON), and its recent events ([`BotEvent`]s, oldest first).
+pub const STATUS: &str = "bot_status";
+pub const EVENTS: &str = "bot_events";
 const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(4);
+
+/// A bot that reported this recently counts as online. It's meant to report every 30 seconds.
+pub const ONLINE_SECS: i64 = 150;
+const KEEP_EVENTS: usize = 50;
+const EVENTS_PER_REPORT: usize = 20;
+const MAX_TEXT: usize = 200;
 
 /// The statuses a `status=` filter stands for.
 pub fn statuses(filter: &str) -> Option<&'static [&'static str]> {
@@ -97,6 +113,81 @@ pub async fn update(mut req: Request, store: &Store) -> Result<Response> {
     }
 }
 
+/// The bot's last report, as the Hub keeps it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredBot {
+    pub state: String,
+    pub activity: String,
+    pub version: String,
+    /// When the Hub last heard from it (unix seconds, the Hub's clock).
+    pub seen_at: i64,
+}
+
+/// What the Overview shows: the last report, if any, and recent events, newest first.
+#[derive(Debug, Clone, Default)]
+pub struct BotView {
+    pub status: Option<StoredBot>,
+    pub events: Vec<BotEvent>,
+}
+
+fn clip(text: &str, max: usize) -> String {
+    text.trim().chars().take(max).collect()
+}
+
+/// [stored] plus the events of one report: levels and text tidied, times kept sane (the bot's clock may be off,
+/// so a missing or future time becomes [now]), oldest first, the latest [`KEEP_EVENTS`] kept.
+pub fn merge_events(mut stored: Vec<BotEvent>, incoming: Vec<BotEvent>, now: i64) -> Vec<BotEvent> {
+    for e in incoming.into_iter().take(EVENTS_PER_REPORT) {
+        let message = clip(&e.message, MAX_TEXT);
+        if message.is_empty() {
+            continue;
+        }
+        let level = if e.level == "error" { "error" } else { "info" }.to_string();
+        let at = if e.at <= 0 || e.at > now { now } else { e.at };
+        stored.push(BotEvent { at, level, message });
+    }
+    stored.sort_by_key(|e| e.at);
+    let extra = stored.len().saturating_sub(KEEP_EVENTS);
+    stored.drain(..extra);
+    stored
+}
+
+/// `POST /api/bot/status`: the bot's heartbeat.
+pub async fn status(mut req: Request, store: &Store) -> Result<Response> {
+    if let Some(r) = refuse(&req, store).await? {
+        return Ok(r);
+    }
+    let Ok(body) = req.json::<BotStatus>().await else {
+        return json_error("Send {\"state\": \"idle\", \"activity\": \"…\", \"events\": []}.", 400);
+    };
+    if !["idle", "working", "error"].contains(&body.state.as_str()) {
+        return json_error("state is idle, working or error.", 400);
+    }
+    let now = now();
+    let stored = StoredBot {
+        state: body.state,
+        activity: clip(body.activity.as_deref().unwrap_or_default(), MAX_TEXT),
+        version: clip(body.version.as_deref().unwrap_or_default(), 40),
+        seen_at: now,
+    };
+    store.set_setting(STATUS, Some(&serde_json::to_string(&stored)?)).await?;
+    if !body.events.is_empty() {
+        let current = store.setting(EVENTS).await?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let merged = merge_events(current, body.events, now);
+        store.set_setting(EVENTS, Some(&serde_json::to_string(&merged)?)).await?;
+    }
+    web::json(&OkResponse { ok: true }, 200)
+}
+
+/// What the Overview shows about the bot.
+pub async fn view(store: &Store) -> Result<BotView> {
+    let status = store.setting(STATUS).await?.and_then(|s| serde_json::from_str(&s).ok());
+    let mut events: Vec<BotEvent> =
+        store.setting(EVENTS).await?.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    events.reverse();
+    Ok(BotView { status, events })
+}
+
 /// The signature header's value for [body].
 pub fn signature(token_hash: &str, body: &str) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(token_hash.as_bytes()).expect("HMAC accepts any key length");
@@ -155,6 +246,38 @@ mod tests {
         assert_eq!(normalize_webhook("http://127.0.0.1:9000/h").as_deref(), Some("http://127.0.0.1:9000/h"));
         assert_eq!(normalize_webhook("http://bot.example/h"), None);
         assert_eq!(normalize_webhook("not a link"), None);
+    }
+
+    fn event(at: i64, level: &str, message: &str) -> BotEvent {
+        BotEvent { at, level: level.into(), message: message.into() }
+    }
+
+    #[test]
+    fn events_are_tidied_ordered_and_capped() {
+        let incoming = vec![
+            event(200, "error", "  boom  "),
+            event(0, "warn", "no time"),
+            event(9_999_999, "info", "future"),
+            event(150, "info", "   "),
+        ];
+        let merged = merge_events(vec![event(100, "info", "old")], incoming, 1_000);
+        let shown: Vec<_> = merged.iter().map(|e| (e.at, e.level.as_str(), e.message.as_str())).collect();
+        assert_eq!(
+            shown,
+            [(100, "info", "old"), (200, "error", "boom"), (1_000, "info", "no time"), (1_000, "info", "future")]
+        );
+
+        let many: Vec<_> = (0..40).map(|i| event(i + 1, "info", "x")).collect();
+        assert_eq!(merge_events(vec![], many.clone(), 1_000).len(), EVENTS_PER_REPORT);
+        let mut merged = vec![];
+        for _ in 0..3 {
+            merged = merge_events(merged, many.clone(), 1_000);
+        }
+        assert_eq!(merged.len(), KEEP_EVENTS);
+        assert!(merged.windows(2).all(|w| w[0].at <= w[1].at));
+
+        let long = merge_events(vec![], vec![event(1, "info", &"y".repeat(500))], 10);
+        assert_eq!(long[0].message.chars().count(), MAX_TEXT);
     }
 
     #[test]

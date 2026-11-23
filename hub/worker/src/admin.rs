@@ -246,6 +246,8 @@ pub async fn overview(req: &Request, store: &Store) -> Result<Response> {
         week_labels,
         usage_by_token_hash,
         pending_requests: store.pending_request_count().await?,
+        bot: bot::view(store).await?,
+        now,
     };
     page(ui::overview::page(&data, web::flash_from_query(req).as_ref()))
 }
@@ -726,6 +728,8 @@ pub async fn bot_action(mut req: Request, store: &Store, action: &str) -> Result
         }
         "revoke" => {
             store.set_setting(bot::TOKEN_HASH, None).await?;
+            store.set_setting(bot::STATUS, None).await?;
+            store.set_setting(bot::EVENTS, None).await?;
             web::redirect_with("/requests", true, "Bot access is off. The old token no longer works.")
         }
         "webhook" => {

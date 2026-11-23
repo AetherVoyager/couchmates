@@ -79,7 +79,8 @@ webhook and an example are in [`bot-api.md`](bot-api.md).
 
 ## Overview
 
-Users and active devices, live streams, the library, Telegram bot health, data used per user (with a 7-day chart),
+Users and active devices, live streams, the library, your request bot (online or offline, what it's doing, recent
+events and errors, when it reports through the bot API), Telegram bot health, data used per user (with a 7-day chart),
 and **Voice chat now**: every voice room with each person's mic as *mic on*, *muted* or *no mic*, straight from
 LiveKit.
 

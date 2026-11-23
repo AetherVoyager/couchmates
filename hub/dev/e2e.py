@@ -429,6 +429,19 @@ s, _, body = call(anon, "/api/bot/requests/update", data={"id": req4.get("id"), 
 check("a made-up status is refused", s == 400, body)
 s, _, body = call(anon, "/api/app/requests", headers=bob)
 check("bob sees it added", any(r["id"] == req4.get("id") and r["status"] == "added" for r in json.loads(body)["requests"]), body)
+s, _, _ = call(anon, "/api/bot/status", data={"state": "idle"})
+check("the bot's status needs its token", s == 401)
+s, _, body = call(anon, "/api/bot/status", data={"state": "sleeping"}, headers=botauth)
+check("a made-up bot state is refused", s == 400, body)
+s, _, body = call(anon, "/api/bot/status", data={
+    "state": "working", "activity": "Adding Dune", "version": "9.9",
+    "events": [{"at": 1, "level": "error", "message": "Search bot <b>timed out</b>"}],
+}, headers=botauth)
+check("the bot reports its status", s == 200 and json.loads(body) == {"ok": True}, body)
+s, _, page = call(b, "/")
+check("the overview shows the bot and its events, escaped",
+      "Request bot" in page and "Adding Dune" in page and "Online" not in page.split("Request bot")[1].split("</div>")[0]
+      and "Search bot &lt;b&gt;timed out&lt;/b&gt;" in page, page[:300])
 call(b, f"/requests/{req4.get('id')}/delete", form={})
 call(b, "/bot/webhook", form={"url": "remove"})
 s, _, _ = call(b, "/bot/revoke", form={})

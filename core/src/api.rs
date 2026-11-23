@@ -640,6 +640,31 @@ pub struct BotWebhook {
     pub request: MediaRequest,
 }
 
+/// What the bot says about itself (`POST /api/bot/status`, see `hub/core/src/bot.rs`), about every 30 seconds.
+/// The Overview page shows it. A bot that stops reporting shows as offline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BotStatus {
+    /// `idle`, `working` or `error`.
+    pub state: String,
+    /// What it is doing, or what went wrong, in a sentence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Things that happened since the last report. The Hub keeps the latest 50.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<BotEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BotEvent {
+    /// Unix seconds when it happened.
+    pub at: i64,
+    /// `info` or `error`.
+    pub level: String,
+    pub message: String,
+}
+
 /// Takes the user's name off a request. A pending request nobody wants any more is removed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MediaRequestCancel {
@@ -718,5 +743,6 @@ mod tests {
         round_trips::<MediaRequestCancel>(include_str!("../contract/media_request_cancel.json"));
         round_trips::<MediaRequestUpdate>(include_str!("../contract/media_request_update.json"));
         round_trips::<BotWebhook>(include_str!("../contract/bot_webhook.json"));
+        round_trips::<BotStatus>(include_str!("../contract/bot_status.json"));
     }
 }

@@ -78,6 +78,7 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         return match (method, rest) {
             (Method::Get, "requests") => bot::list(req, &store).await,
             (Method::Post, "requests/update") => bot::update(req, &store).await,
+            (Method::Post, "status") => bot::status(req, &store).await,
             _ => web::json_error("Not found", 404),
         };
     }

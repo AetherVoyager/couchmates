@@ -2,12 +2,13 @@
 
 use std::collections::HashMap;
 
+use couchmates_hub_core::bot::{BotView, ONLINE_SECS};
 use couchmates_hub_core::livekit::{Mic, VoiceMember};
 use couchmates_hub_core::store::User;
 use maud::{Markup, html};
 use serde_json::Value;
 
-use crate::layout::{Flash, bars, gb, layout, limit};
+use crate::layout::{Flash, ago, bars, gb, layout, limit};
 
 pub enum VoiceStatus {
     NotConfigured,
@@ -31,6 +32,10 @@ pub struct Overview<'a> {
     pub usage_by_token_hash: HashMap<String, (f64, f64)>,
     /// Title requests waiting for an answer.
     pub pending_requests: i64,
+    /// What the admin's request bot last reported.
+    pub bot: BotView,
+    /// The time the page is drawn (unix seconds), for "5 min ago".
+    pub now: i64,
 }
 
 fn num(v: &Value, key: &str) -> Option<f64> {
@@ -70,6 +75,40 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
                 div.label { "Library" }
                 div.stat { (num(system, "movies").unwrap_or(0.0)) " · " (num(system, "tv_shows").unwrap_or(0.0)) }
                 div.label { "movies · shows" }
+            }
+        }
+        div.card {
+            h2 { "Request bot" }
+            @match &data.bot.status {
+                None => p.muted { "No bot has reported yet. Make a token on the " a href="/requests" { "Requests page" } " and start your bot with it." },
+                Some(b) => {
+                    @let online = data.now - b.seen_at <= ONLINE_SECS;
+                    p {
+                        @if !online {
+                            span.pill.bad { "Offline" } " last heard from " (ago(data.now, b.seen_at)) "."
+                        } @else {
+                            span.pill.(match b.state.as_str() { "error" => "bad", "working" => "warn", _ => "ok" }) {
+                                (match b.state.as_str() { "error" => "Error", "working" => "Working", _ => "Online" })
+                            }
+                            " " (b.activity)
+                        }
+                        @if !b.version.is_empty() { " " span.muted { "v" (b.version) } }
+                    }
+                    @if !online && !b.activity.is_empty() {
+                        p.muted { "Last said: " (b.activity) }
+                    }
+                }
+            }
+            @if !data.bot.events.is_empty() {
+                table {
+                    tr { th { "When" } th { "What happened" } }
+                    @for e in data.bot.events.iter().take(12) {
+                        tr {
+                            td { (ago(data.now, e.at)) }
+                            td { @if e.level == "error" { span.pill.bad { "error" } " " } (e.message) }
+                        }
+                    }
+                }
             }
         }
         div.card {
