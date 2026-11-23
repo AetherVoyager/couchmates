@@ -169,7 +169,7 @@ class Chat extends ChangeNotifier {
     _socket = null;
     if (_connected) {
       _connected = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
     await socket?.close();
   }
@@ -381,8 +381,12 @@ class Chat extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    // stop() finishes after this returns, so it mustn't notify then.
+    _disposed = true;
     unawaited(stop());
     _incoming.close();
     super.dispose();

@@ -21,12 +21,16 @@ class CouchmatesApp extends StatelessWidget {
     required this.settings,
     required this.progress,
     required this.watchlist,
+    this.chatConnector,
   });
 
   final HubSession session;
   final AppSettings settings;
   final ProgressStore progress;
   final Watchlist watchlist;
+
+  /// Opens the live chat socket; tests pass one that never reaches the network.
+  final ChatConnector? chatConnector;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +46,10 @@ class CouchmatesApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => WatchTogether(session: session, navigator: navigatorKey, settings: settings),
         ),
-        ChangeNotifierProvider(lazy: false, create: (_) => AppChat(session: session)),
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (_) => AppChat(session: session, connect: chatConnector),
+        ),
         ChangeNotifierProvider(
           lazy: false,
           create: (context) => FriendsLink(

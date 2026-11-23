@@ -3,8 +3,9 @@ import 'package:couchmates_core/couchmates_core.dart';
 /// The Hub's [Chat], running while the user is signed in, plus what the
 /// bubble's chat tab shows.
 class AppChat extends Chat {
-  AppChat({required this.session})
+  AppChat({required this.session, ChatConnector? connect})
     : super(
+        connect: connect ?? connectChatSocket,
         hub: () => session.status == SessionStatus.signedIn ? session.hub : null,
         me: () => session.config?.user.id,
       ) {

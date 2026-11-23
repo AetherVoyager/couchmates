@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -49,6 +50,7 @@ Future<List<http.Request>> signIn(WidgetTester tester) async {
       settings: AppSettings(MemorySettingsStore()),
       progress: ProgressStore(MemorySettingsStore()),
       watchlist: Watchlist(MemorySettingsStore()),
+      chatConnector: noSocket,
     ),
   );
   await tester.runAsync(session.restore);
@@ -134,4 +136,21 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(minutes: 2));
   });
+}
+
+/// The live chat socket in tests: connects at once and stays quiet, so no real WebSocket is opened and nothing
+/// is left running when a test ends.
+Future<ChatSocket> noSocket(Uri url, Map<String, String> headers) async => _QuietSocket();
+
+class _QuietSocket implements ChatSocket {
+  final _frames = StreamController<String>();
+
+  @override
+  Stream<String> get frames => _frames.stream;
+
+  @override
+  void send(String text) {}
+
+  @override
+  Future<void> close() => _frames.close();
 }
