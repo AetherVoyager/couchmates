@@ -5,6 +5,7 @@
 pub mod addons;
 pub mod layout;
 pub mod overview;
+pub mod requests;
 pub mod settings;
 pub mod sign_in;
 pub mod users;

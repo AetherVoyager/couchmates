@@ -34,6 +34,9 @@
 //! | `POST /api/app/chat/send` | [`ChatSend`] | [`ChatMessage`] |
 //! | `POST /api/app/chat/read` | [`ChatRead`] | [`OkResponse`] |
 //! | `GET /api/app/chat/live` (WebSocket) | | a stream of [`ChatEvent`] text frames |
+//! | `GET /api/app/requests` | | [`MediaRequests`] |
+//! | `POST /api/app/requests` | [`MediaRequestCreate`] | [`MediaRequest`] |
+//! | `POST /api/app/requests/cancel` | [`MediaRequestCancel`] | [`OkResponse`] |
 
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +70,8 @@ pub mod paths {
     pub const CHAT_SEND: &str = "/api/app/chat/send";
     pub const CHAT_READ: &str = "/api/app/chat/read";
     pub const CHAT_LIVE: &str = "/api/app/chat/live";
+    pub const REQUESTS: &str = "/api/app/requests";
+    pub const REQUESTS_CANCEL: &str = "/api/app/requests/cancel";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -554,6 +559,74 @@ pub struct ChatEvent {
     pub message: Option<ChatMessage>,
 }
 
+/// A request's status. Only the admin changes it, on the dashboard's Requests page. Asking never downloads
+/// anything: the admin adds the title to Telegram-Stremio by hand.
+pub mod request_status {
+    /// Waiting for the admin.
+    pub const PENDING: &str = "pending";
+    /// The admin will add it.
+    pub const APPROVED: &str = "approved";
+    /// It's in the library now.
+    pub const ADDED: &str = "added";
+    pub const DECLINED: &str = "declined";
+    pub const ALL: &[&str] = &[PENDING, APPROVED, ADDED, DECLINED];
+}
+
+/// A title someone asked the admin to add to the library. There is one per title: friends asking for the same
+/// one are listed together in [`MediaRequest::requested_by`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaRequest {
+    pub id: String,
+    /// `movie` or `series`.
+    pub kind: String,
+    /// The title's Stremio id, usually its IMDb id (`tt…`).
+    pub title_id: String,
+    pub name: String,
+    /// Free text such as `1999` or `2008–2013`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
+    /// An https poster link from the catalog that found it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<String>,
+    /// One of [`request_status::ALL`].
+    pub status: String,
+    /// The admin's note to whoever asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// Display names of who asked, first asker first.
+    pub requested_by: Vec<String>,
+    /// Whether the signed-in user is among them.
+    pub mine: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// Every request, most recently changed first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaRequests {
+    pub requests: Vec<MediaRequest>,
+}
+
+/// Asks for a title, or adds the user to an existing request for it. A declined title asked for again goes
+/// back to pending.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaRequestCreate {
+    /// `movie` or `series`.
+    pub kind: String,
+    pub title_id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<String>,
+}
+
+/// Takes the user's name off a request. A pending request nobody wants any more is removed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaRequestCancel {
+    pub id: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OkResponse {
     pub ok: bool,
@@ -620,5 +693,9 @@ mod tests {
         round_trips::<ChatMessage>(include_str!("../contract/chat_message.json"));
         round_trips::<ChatRead>(include_str!("../contract/chat_read.json"));
         round_trips::<ChatEvent>(include_str!("../contract/chat_event.json"));
+        round_trips::<MediaRequests>(include_str!("../contract/media_requests.json"));
+        round_trips::<MediaRequest>(include_str!("../contract/media_request.json"));
+        round_trips::<MediaRequestCreate>(include_str!("../contract/media_request_create.json"));
+        round_trips::<MediaRequestCancel>(include_str!("../contract/media_request_cancel.json"));
     }
 }

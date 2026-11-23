@@ -6,7 +6,7 @@ mod chat_live;
 
 pub use chat_live::ChatLive;
 
-use couchmates_hub_core::{api, chat, crypto, social, store, tgs, web};
+use couchmates_hub_core::{api, chat, crypto, requests, social, store, tgs, web};
 
 use worker::{Context, Env, Method, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
@@ -66,6 +66,9 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             (Method::Post, "chat/send") => chat::send(req, &store, env).await,
             (Method::Post, "chat/read") => chat::read(req, &store).await,
             (Method::Get, "chat/live") => chat::live(req, &store, env).await,
+            (Method::Get, "requests") => requests::list(req, &store).await,
+            (Method::Post, "requests") => requests::create(req, &store).await,
+            (Method::Post, "requests/cancel") => requests::cancel(req, &store).await,
             _ => web::json_error("Not found", 404),
         };
     }
@@ -115,6 +118,11 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         (Method::Post, ["addons", id, action]) => {
             let (id, action) = (id.to_string(), action.to_string());
             admin::addon_action(req, &store, &id, &action).await
+        }
+        (Method::Get, ["requests"]) => admin::requests_page(&req, &store, None).await,
+        (Method::Post, ["requests", id, action]) => {
+            let (id, action) = (id.to_string(), action.to_string());
+            admin::request_action(req, &store, &id, &action).await
         }
         (Method::Get, ["settings"]) => admin::settings_page(&req, &store, None).await,
         (Method::Post, ["settings", "tgs"]) => admin::save_tgs(req, &store).await,

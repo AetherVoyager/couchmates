@@ -337,6 +337,52 @@ check("no private chat with yourself", s == 404)
 if live:
     live.close()
 
+# --- Title requests: friends ask for what isn't in the library, the admin answers on the dashboard
+s, _, _ = call(anon, "/api/app/requests")
+check("requests need sign-in", s == 401)
+s, _, body = call(anon, "/api/app/requests", headers=auth)
+check("no requests yet", s == 200 and json.loads(body) == {"requests": []}, body)
+MATRIX = {"kind": "movie", "title_id": "tt0133093", "name": " The Matrix ", "year": "1999",
+          "poster": "javascript:alert(1)"}
+s, _, body = call(anon, "/api/app/requests", data={**MATRIX, "kind": "channel"}, headers=auth)
+check("odd requests are refused", s == 400, body)
+s, _, body = call(anon, "/api/app/requests", data=MATRIX, headers=auth)
+req1 = json.loads(body) if s == 200 else {}
+check("alice asks for a title", s == 200 and req1["status"] == "pending" and req1["name"] == "The Matrix"
+      and req1["mine"] and req1["requested_by"] == ["Alice B."] and "poster" not in req1, body)
+s, _, body = call(anon, "/api/app/requests", data=MATRIX, headers=bob)
+req2 = json.loads(body) if s == 200 else {}
+check("bob asking for it too joins the same request", s == 200 and req2.get("id") == req1.get("id")
+      and req2["requested_by"] == ["Alice B.", "Bob"], body)
+s, _, page = call(b, "/requests")
+check("the admin sees it waiting, with who asked", s == 200 and "The Matrix" in page and "Alice B., Bob" in page
+      and "Mark added" in page, page[:300])
+s, _, page = call(b, "/")
+check("the overview counts it", s == 200 and "waiting for your answer" in page)
+s, hd, _ = call(b, f"/requests/{req1.get('id')}/status", form={"status": "approved", "note": "This weekend", "back": "open"})
+check("the admin approves it with a note", s == 303 and "approved" in urllib.parse.unquote_plus(hd.get("location", "")), hd.get("location"))
+s, _, _ = call(b, f"/requests/{req1.get('id')}/status", form={"status": "downloading", "note": ""})
+s, _, body = call(anon, "/api/app/requests", headers=bob)
+mine = json.loads(body)["requests"][0] if s == 200 else {}
+check("bob sees the status and note; a made-up status was ignored", mine.get("status") == "approved"
+      and mine.get("note") == "This weekend" and mine.get("mine") is True, body)
+s, _, body = call(anon, "/api/app/requests/cancel", data={"id": req1.get("id")}, headers=bob)
+s, _, body = call(anon, "/api/app/requests", headers=bob)
+mine = json.loads(body)["requests"][0] if s == 200 else {}
+check("bob withdraws; the request stays for alice", mine.get("mine") is False and mine["requested_by"] == ["Alice B."], body)
+call(b, f"/requests/{req1.get('id')}/status", form={"status": "declined", "note": "Not available"})
+s, _, body = call(anon, "/api/app/requests", data=MATRIX, headers=bob)
+check("asking again for a declined title reopens it", s == 200 and json.loads(body)["status"] == "pending"
+      and "note" not in json.loads(body), body)
+s, _, body = call(anon, "/api/app/requests", data={"kind": "series", "title_id": "tt0903747", "name": "Breaking Bad"}, headers=bob)
+req3 = json.loads(body) if s == 200 else {}
+s, _, _ = call(anon, "/api/app/requests/cancel", data={"id": req3.get("id")}, headers=bob)
+s, _, body = call(anon, "/api/app/requests", headers=auth)
+check("a pending request nobody wants any more goes", [r["name"] for r in json.loads(body)["requests"]] == ["The Matrix"], body)
+s, hd, _ = call(b, f"/requests/{req1.get('id')}/delete", form={"back": "all"})
+s, _, body = call(anon, "/api/app/requests", headers=auth)
+check("the admin can delete a request", json.loads(body) == {"requests": []}, body)
+
 # --- Admin resets a password: everyone signed out
 uid = re.search(r'href="/users/([0-9a-f]{16})">Alice B\.<', call(b, "/users")[2]).group(1)
 s, _, page = call(b, f"/users/{uid}/password", form={"password": ""})

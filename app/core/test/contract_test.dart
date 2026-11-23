@@ -56,6 +56,10 @@ void main() {
     roundTrips('chat_message.json', (j) => ChatMessage.fromJson(j).toJson());
     roundTrips('chat_read.json', (j) => ChatRead.fromJson(j).toJson());
     roundTrips('chat_event.json', (j) => ChatEvent.fromJson(j).toJson());
+    roundTrips('media_requests.json', (j) => MediaRequests.fromJson(j).toJson());
+    roundTrips('media_request.json', (j) => MediaRequest.fromJson(j).toJson());
+    roundTrips('media_request_create.json', (j) => MediaRequestCreate.fromJson(j).toJson());
+    roundTrips('media_request_cancel.json', (j) => MediaRequestCancel.fromJson(j).toJson());
   });
 
   group('rules match the shared contract', () {

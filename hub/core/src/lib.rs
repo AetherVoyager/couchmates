@@ -14,6 +14,7 @@
 //! - [`trackers`]: Trakt and Simkl linking and scrobbling.
 //! - [`updates`]: app updates from GitHub Releases.
 //! - [`social`]: who's watching what, and requests to join.
+//! - [`requests`]: titles friends ask the admin to add.
 //! - [`usage`]: data use per day.
 //! - [`web`]: request and response helpers.
 
@@ -24,6 +25,7 @@ pub mod catalog_check;
 pub mod chat;
 pub mod crypto;
 pub mod livekit;
+pub mod requests;
 pub mod social;
 pub mod store;
 pub mod tgs;

@@ -33,6 +33,8 @@ abstract final class HubPaths {
   static const chatSend = '/api/app/chat/send';
   static const chatRead = '/api/app/chat/read';
   static const chatLive = '/api/app/chat/live';
+  static const requests = '/api/app/requests';
+  static const requestsCancel = '/api/app/requests/cancel';
 }
 
 class LoginRequest {
@@ -1045,4 +1047,130 @@ class FileTracksUpload {
   );
 
   Json toJson() => {'key': key, 'tracks': tracks.map((t) => t.toJson()).toList()};
+}
+
+/// A request's status; only the admin changes it. Asking never downloads anything: the admin adds the title to
+/// the library by hand.
+abstract final class RequestStatus {
+  static const pending = 'pending';
+  static const approved = 'approved';
+  static const added = 'added';
+  static const declined = 'declined';
+}
+
+/// A title someone asked the admin to add. One per title; friends asking for the same one share it.
+class MediaRequest {
+  const MediaRequest({
+    required this.id,
+    required this.kind,
+    required this.titleId,
+    required this.name,
+    this.year,
+    this.poster,
+    required this.status,
+    this.note,
+    this.requestedBy = const [],
+    required this.mine,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+
+  /// `movie` or `series`.
+  final String kind;
+
+  /// The title's Stremio id, usually its IMDb id.
+  final String titleId;
+  final String name;
+  final String? year;
+  final String? poster;
+
+  /// One of [RequestStatus].
+  final String status;
+
+  /// The admin's note to whoever asked.
+  final String? note;
+
+  /// Display names of who asked, first asker first.
+  final List<String> requestedBy;
+
+  /// Whether the signed-in user asked for it.
+  final bool mine;
+  final int createdAt;
+  final int updatedAt;
+
+  /// Still waiting on the admin.
+  bool get open => status == RequestStatus.pending || status == RequestStatus.approved;
+
+  factory MediaRequest.fromJson(Json j) => MediaRequest(
+    id: j['id'] as String,
+    kind: j['kind'] as String,
+    titleId: j['title_id'] as String,
+    name: j['name'] as String,
+    year: j['year'] as String?,
+    poster: j['poster'] as String?,
+    status: j['status'] as String,
+    note: j['note'] as String?,
+    requestedBy: [for (final n in j['requested_by'] as List? ?? const []) n as String],
+    mine: j['mine'] as bool? ?? false,
+    createdAt: (j['created_at'] as num).toInt(),
+    updatedAt: (j['updated_at'] as num).toInt(),
+  );
+
+  Json toJson() => {
+    'id': id,
+    'kind': kind,
+    'title_id': titleId,
+    'name': name,
+    'year': ?year,
+    'poster': ?poster,
+    'status': status,
+    'note': ?note,
+    'requested_by': requestedBy,
+    'mine': mine,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  };
+}
+
+class MediaRequests {
+  const MediaRequests({required this.requests});
+
+  final List<MediaRequest> requests;
+
+  factory MediaRequests.fromJson(Json j) =>
+      MediaRequests(requests: [for (final r in j['requests'] as List? ?? const []) MediaRequest.fromJson(r as Json)]);
+
+  Json toJson() => {'requests': requests.map((r) => r.toJson()).toList()};
+}
+
+class MediaRequestCreate {
+  const MediaRequestCreate({required this.kind, required this.titleId, required this.name, this.year, this.poster});
+
+  final String kind;
+  final String titleId;
+  final String name;
+  final String? year;
+  final String? poster;
+
+  factory MediaRequestCreate.fromJson(Json j) => MediaRequestCreate(
+    kind: j['kind'] as String,
+    titleId: j['title_id'] as String,
+    name: j['name'] as String,
+    year: j['year'] as String?,
+    poster: j['poster'] as String?,
+  );
+
+  Json toJson() => {'kind': kind, 'title_id': titleId, 'name': name, 'year': ?year, 'poster': ?poster};
+}
+
+class MediaRequestCancel {
+  const MediaRequestCancel({required this.id});
+
+  final String id;
+
+  factory MediaRequestCancel.fromJson(Json j) => MediaRequestCancel(id: j['id'] as String);
+
+  Json toJson() => {'id': id};
 }

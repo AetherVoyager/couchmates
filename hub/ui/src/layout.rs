@@ -31,7 +31,13 @@ button.secondary{background:transparent;color:var(--text)}button.danger{backgrou
 "#;
 
 pub fn layout(title: &str, active: &str, flash: Option<&Flash>, body: Markup) -> Markup {
-    let nav = [("/", "Overview"), ("/users", "Users"), ("/addons", "Add-ons"), ("/settings", "Settings")];
+    let nav = [
+        ("/", "Overview"),
+        ("/users", "Users"),
+        ("/addons", "Add-ons"),
+        ("/requests", "Requests"),
+        ("/settings", "Settings"),
+    ];
     html! {
         (DOCTYPE)
         html lang="en" {

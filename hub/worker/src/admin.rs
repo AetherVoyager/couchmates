@@ -244,6 +244,7 @@ pub async fn overview(req: &Request, store: &Store) -> Result<Response> {
         week,
         week_labels,
         usage_by_token_hash,
+        pending_requests: store.pending_request_count().await?,
     };
     page(ui::overview::page(&data, web::flash_from_query(req).as_ref()))
 }
@@ -651,6 +652,83 @@ pub async fn save_tmdb(mut req: Request, store: &Store) -> Result<Response> {
             settings_page(&req, store, Some(Flash::Ok("TMDB works. Saved: titles now show cast photos.".into()))).await
         }
         Err(e) => settings_page(&req, store, Some(Flash::Bad(format!("Not saved: {e}.")))).await,
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Requests
+
+/// The statuses a Requests filter shows.
+fn request_filter(filter: &str) -> &'static [&'static str] {
+    use couchmates_hub_core::requests::request_status::*;
+    match filter {
+        "pending" => &[PENDING],
+        "approved" => &[APPROVED],
+        "added" => &[ADDED],
+        "declined" => &[DECLINED],
+        "all" => &[],
+        _ => &[PENDING, APPROVED],
+    }
+}
+
+pub async fn requests_page(req: &Request, store: &Store, flash: Option<Flash>) -> Result<Response> {
+    let flash = flash.or_else(|| web::flash_from_query(req));
+    let url = req.url()?;
+    let asked = url.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.into_owned()).unwrap_or_default();
+    let filter = ui::requests::FILTERS.iter().map(|(v, _)| *v).find(|v| *v == asked).unwrap_or("open");
+    let rows = store.media_requests("", request_filter(filter)).await?;
+    let now = now();
+    let views: Vec<ui::requests::Request> = rows
+        .iter()
+        .map(|r| ui::requests::Request {
+            id: &r.id,
+            kind: &r.kind,
+            title_id: &r.title_id,
+            name: &r.name,
+            year: r.year.as_deref(),
+            poster: r.poster.as_deref(),
+            status: &r.status,
+            note: r.note.as_deref(),
+            requested_by: r.requester_names(),
+            asked: ui::layout::ago(now, r.created_at),
+            changed: ui::layout::ago(now, r.updated_at),
+        })
+        .collect();
+    let pending = store.pending_request_count().await?;
+    page(ui::requests::page(&views, filter, pending, flash.as_ref()))
+}
+
+/// Requests → a status button (with the note field) or Delete.
+pub async fn request_action(mut req: Request, store: &Store, id: &str, action: &str) -> Result<Response> {
+    let form = req.form_data().await?;
+    let back = form.get_field("back").unwrap_or_default();
+    let back = ui::requests::FILTERS.iter().map(|(v, _)| *v).find(|v| *v == back).unwrap_or("open");
+    let to = format!("/requests?status={back}");
+    let Some(request) = store.media_request(id, "").await? else {
+        return web::redirect_with(&to, false, "That request is gone.");
+    };
+    match action {
+        "status" => {
+            let status = form.get_field("status").unwrap_or_default();
+            if !couchmates_hub_core::requests::request_status::ALL.contains(&status.as_str()) {
+                return web::redirect_with(&to, false, "Pick a status.");
+            }
+            let note: String = form
+                .get_field("note")
+                .unwrap_or_default()
+                .trim()
+                .chars()
+                .take(couchmates_hub_core::requests::MAX_NOTE)
+                .collect();
+            store.set_request_status(id, &status, (!note.is_empty()).then_some(note.as_str())).await?;
+            let message = format!("{} is {}.", request.name, ui::requests::status_label(&status).to_lowercase());
+            web::redirect_with(&to, true, &message)
+        }
+        "delete" => {
+            store.delete_request(id).await?;
+            web::redirect_with(&to, true, &format!("Deleted the request for {}.", request.name))
+        }
+        _ => web::redirect(&to),
     }
 }
 

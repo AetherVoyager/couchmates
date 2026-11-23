@@ -201,6 +201,15 @@ class HubClient {
   Future<Activity> cancelJoinRequest(String id) async =>
       Activity.fromJson(await _send('POST', HubPaths.joinRequestsCancel, body: JoinRequestCancel(id: id).toJson()));
 
+  Future<MediaRequests> mediaRequests() async => MediaRequests.fromJson(await _send('GET', HubPaths.requests));
+
+  Future<MediaRequest> askForTitle(MediaRequestCreate request) async =>
+      MediaRequest.fromJson(await _send('POST', HubPaths.requests, body: request.toJson()));
+
+  Future<void> withdrawRequest(String id) async {
+    await _send('POST', HubPaths.requestsCancel, body: MediaRequestCancel(id: id).toJson());
+  }
+
   Future<ChatOverview> chatChannels() async => ChatOverview.fromJson(await _send('GET', HubPaths.chat));
 
   /// A page of [channel]: the latest, those [before] a message id, or those

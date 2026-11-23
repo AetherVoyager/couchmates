@@ -22,6 +22,10 @@ Updates arrive in the app: when a new version is out, home shows **Update now**.
   can't be read ahead, they're all in the player's menus. Reading takes a few seconds the first time anyone on your
   Hub opens a file; after that the Hub remembers its tracks, so they show at once for everyone. The app also
   starts reading when you rest the mouse on a movie's poster. Shows have seasons, episodes and a shuffle button.
+- **Search** finds any movie or show, not just what's in the library. Titles you can play now say **In library**.
+  For anything else, press **Request** to ask your host to add it; if a friend already asked, you're added to their
+  request. With the search box empty, Search lists the requests and their status: *Requested*, *Approved*, *Added* or
+  *Declined*, with your host's note. Click one to withdraw yours.
 - **Catalog pages** have a Back arrow; Esc, Alt+← and the mouse's back button also go back.
 - **In the player:** Space pauses, ←/→ skip, ↑/↓ change the volume, M mutes, F goes full screen, N plays the next
   episode, and I shows media info. Audio and subtitle menus are bottom right.

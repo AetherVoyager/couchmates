@@ -10,8 +10,10 @@
 ///   [fetchOnlineSubtitles] adds subtitles from Stremio's OpenSubtitles addon.
 ///   [AddonSet] adds the Hub's public add-ons to the user's catalog.
 /// - Session: [HubSession], the signed-in user, their config and catalog.
-/// - Library: [loadHomeRows] and [CatalogPager] for browsing, and
-///   [ProgressStore] for where you stopped.
+/// - Library: [loadHomeRows] and [CatalogPager] for browsing,
+///   [ProgressStore] for where you stopped, and [TitleSearch] to find any
+///   title and see whether it's in the library (titles that aren't can be
+///   requested from the admin through [HubSession.askFor]).
 /// - Settings: [AppSettings], and track choice by preferred language.
 /// - Watch: [WatchRoom] over Open Watch Party, finding each person's copy
 ///   in their own catalog.
@@ -27,6 +29,7 @@ export 'src/hub/api.dart';
 export 'src/hub/hub_client.dart';
 export 'src/library/home_feed.dart';
 export 'src/library/progress.dart';
+export 'src/library/title_search.dart';
 export 'src/library/watchlist.dart';
 export 'src/rules.dart';
 export 'src/session/hub_session.dart';

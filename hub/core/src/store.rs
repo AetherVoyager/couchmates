@@ -210,6 +210,40 @@ const JOIN_SELECT: &str = "SELECT r.id, r.from_user, uf.name AS from_name, r.to_
      FROM join_requests r JOIN users uf ON uf.id = r.from_user JOIN users ut ON ut.id = r.to_user \
      LEFT JOIN photos pf ON pf.user_id = r.from_user LEFT JOIN photos pt ON pt.user_id = r.to_user";
 
+/// A title friends asked for, with who asked (a JSON array of names, first asker first) and whether the user
+/// the query was made for is among them.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MediaRequestRow {
+    pub id: String,
+    pub kind: String,
+    pub title_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub year: Option<String>,
+    #[serde(default)]
+    pub poster: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub requested_by: String,
+    pub mine: i64,
+}
+
+impl MediaRequestRow {
+    pub fn requester_names(&self) -> Vec<String> {
+        serde_json::from_str(&self.requested_by).unwrap_or_default()
+    }
+}
+
+/// The columns of a [MediaRequestRow] from `media_requests r`, for user ?1.
+const REQUEST_SELECT: &str = "SELECT r.id, r.kind, r.title_id, r.name, r.year, r.poster, r.status, r.note, \
+     r.created_at, r.updated_at, (SELECT json_group_array(name) FROM (SELECT u.name FROM media_request_users x \
+     JOIN users u ON u.id = x.user_id WHERE x.request_id = r.id ORDER BY x.created_at, x.rowid)) AS requested_by, \
+     EXISTS (SELECT 1 FROM media_request_users x WHERE x.request_id = r.id AND x.user_id = ?1) AS mine \
+     FROM media_requests r";
+
 fn opt_s(value: Option<&str>) -> JsValue {
     value.map_or(JsValue::NULL, s)
 }
@@ -421,6 +455,13 @@ impl Store {
                     .prepare("DELETE FROM chat_messages WHERE channel != 'public' AND (sender = ?1 OR recipient = ?1)")
                     .bind(&[s(id)])?,
                 self.db.prepare("DELETE FROM chat_reads WHERE user_id = ?1").bind(&[s(id)])?,
+                self.db.prepare("DELETE FROM media_request_users WHERE user_id = ?1").bind(&[s(id)])?,
+                self.db
+                    .prepare(
+                        "DELETE FROM media_requests WHERE status = 'pending' AND NOT EXISTS \
+                         (SELECT 1 FROM media_request_users x WHERE x.request_id = media_requests.id)",
+                    )
+                    .bind(&[])?,
                 self.db.prepare("DELETE FROM users WHERE id = ?1").bind(&[s(id)])?,
             ])
             .await?;
@@ -938,6 +979,131 @@ impl Store {
             &[s(user_id), s(channel), n(up_to as f64)],
         )
         .await
+    }
+
+    // -------------------------------------------------------------------------
+    // Title requests
+
+    /// Requests as [user_id] sees them, most recently changed first; [statuses] narrows them (empty: all).
+    pub async fn media_requests(&self, user_id: &str, statuses: &[&str]) -> Result<Vec<MediaRequestRow>> {
+        let mut args = vec![s(user_id)];
+        let filter = if statuses.is_empty() {
+            String::new()
+        } else {
+            let marks: Vec<String> = (0..statuses.len()).map(|i| format!("?{}", i + 2)).collect();
+            args.extend(statuses.iter().map(|st| s(st)));
+            format!(" WHERE r.status IN ({})", marks.join(", "))
+        };
+        self.all(&format!("{REQUEST_SELECT}{filter} ORDER BY r.updated_at DESC LIMIT 300"), &args).await
+    }
+
+    pub async fn media_request(&self, id: &str, user_id: &str) -> Result<Option<MediaRequestRow>> {
+        self.first(&format!("{REQUEST_SELECT} WHERE r.id = ?2"), &[s(user_id), s(id)]).await
+    }
+
+    /// How many requests are waiting for the admin.
+    pub async fn pending_request_count(&self) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            count: i64,
+        }
+        let row: Option<Row> =
+            self.first("SELECT COUNT(*) AS count FROM media_requests WHERE status = 'pending'", &[]).await?;
+        Ok(row.map_or(0, |r| r.count))
+    }
+
+    /// How many requests [user_id] is waiting on (pending or approved).
+    pub async fn open_requests_of(&self, user_id: &str) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            count: i64,
+        }
+        let row: Option<Row> = self
+            .first(
+                "SELECT COUNT(*) AS count FROM media_request_users x JOIN media_requests r ON r.id = x.request_id \
+                 WHERE x.user_id = ?1 AND r.status IN ('pending', 'approved')",
+                &[s(user_id)],
+            )
+            .await?;
+        Ok(row.map_or(0, |r| r.count))
+    }
+
+    /// Asks for a title for [user_id]: a new pending request, or their name added to the one there is. A
+    /// declined title asked for again goes back to pending without the old note.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn ask_for_title(
+        &self,
+        user_id: &str,
+        kind: &str,
+        title_id: &str,
+        name: &str,
+        year: Option<&str>,
+        poster: Option<&str>,
+    ) -> Result<Option<MediaRequestRow>> {
+        let at = n(now() as f64);
+        self.db
+            .batch(vec![
+                self.db
+                    .prepare(
+                        "INSERT INTO media_requests (id, kind, title_id, name, year, poster, status, created_at, \
+                         updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?7) \
+                         ON CONFLICT(kind, title_id) DO UPDATE SET \
+                         status = CASE WHEN status = 'declined' THEN 'pending' ELSE status END, \
+                         note = CASE WHEN status = 'declined' THEN NULL ELSE note END, \
+                         updated_at = CASE WHEN status = 'declined' THEN excluded.updated_at ELSE updated_at END, \
+                         year = COALESCE(year, excluded.year), poster = COALESCE(poster, excluded.poster)",
+                    )
+                    .bind(&[s(&random_id()), s(kind), s(title_id), s(name), opt_s(year), opt_s(poster), at.clone()])?,
+                self.db
+                    .prepare(
+                        "INSERT OR IGNORE INTO media_request_users (request_id, user_id, created_at) \
+                         SELECT id, ?1, ?2 FROM media_requests WHERE kind = ?3 AND title_id = ?4",
+                    )
+                    .bind(&[s(user_id), at, s(kind), s(title_id)])?,
+            ])
+            .await?;
+        self.first(
+            &format!("{REQUEST_SELECT} WHERE r.kind = ?2 AND r.title_id = ?3"),
+            &[s(user_id), s(kind), s(title_id)],
+        )
+        .await
+    }
+
+    /// Takes [user_id] off a request; a pending one nobody wants any more goes.
+    pub async fn withdraw_request(&self, id: &str, user_id: &str) -> Result<()> {
+        self.db
+            .batch(vec![
+                self.db
+                    .prepare("DELETE FROM media_request_users WHERE request_id = ?1 AND user_id = ?2")
+                    .bind(&[s(id), s(user_id)])?,
+                self.db
+                    .prepare(
+                        "DELETE FROM media_requests WHERE id = ?1 AND status = 'pending' AND NOT EXISTS \
+                         (SELECT 1 FROM media_request_users x WHERE x.request_id = ?1)",
+                    )
+                    .bind(&[s(id)])?,
+            ])
+            .await?;
+        Ok(())
+    }
+
+    /// The admin's answer: a status from `request_status::ALL` and an optional note.
+    pub async fn set_request_status(&self, id: &str, status: &str, note: Option<&str>) -> Result<()> {
+        self.run(
+            "UPDATE media_requests SET status = ?2, note = ?3, updated_at = ?4 WHERE id = ?1",
+            &[s(id), s(status), opt_s(note), n(now() as f64)],
+        )
+        .await
+    }
+
+    pub async fn delete_request(&self, id: &str) -> Result<()> {
+        self.db
+            .batch(vec![
+                self.db.prepare("DELETE FROM media_request_users WHERE request_id = ?1").bind(&[s(id)])?,
+                self.db.prepare("DELETE FROM media_requests WHERE id = ?1").bind(&[s(id)])?,
+            ])
+            .await?;
+        Ok(())
     }
 
     pub async fn cleanup(&self) -> Result<()> {

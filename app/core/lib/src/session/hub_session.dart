@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../hub/api.dart';
 import '../hub/hub_client.dart';
+import '../library/title_search.dart';
 import '../social/photo.dart';
 import '../stremio/addon_set.dart';
 import '../stremio/models.dart';
@@ -73,6 +74,11 @@ class HubSession extends ChangeNotifier {
   /// The user's catalog with the Hub's public add-ons (an [AddonSet]), once
   /// the config says where they are.
   StremioClient? get catalog => _catalog;
+
+  TitleSearch? _titleSearch;
+
+  /// Search over the library and every other catalog, marking what's in the library. Set while signed in.
+  TitleSearch? get titleSearch => _titleSearch;
 
   /// The last problem worth showing, such as the Hub being unreachable.
   String? _problem;
@@ -225,6 +231,48 @@ class HubSession extends ChangeNotifier {
     );
   }
 
+  List<MediaRequest> _requests = const [];
+  bool _requestsLoaded = false;
+
+  /// Every title friends asked the admin for, most recently changed first; refreshed by [loadRequests].
+  List<MediaRequest> get requests => _requests;
+  bool get requestsLoaded => _requestsLoaded;
+
+  /// The request for [meta], if anyone asked for it.
+  MediaRequest? requestOf(StremioMeta meta) {
+    final kind = meta.isSeries ? 'series' : 'movie';
+    for (final r in _requests) {
+      if (r.kind == kind && r.titleId == meta.id) return r;
+    }
+    return null;
+  }
+
+  /// Fetches the requests again. Throws [HubException] when the Hub can't be asked.
+  Future<void> loadRequests() async {
+    _requests = (await _require().mediaRequests()).requests;
+    _requestsLoaded = true;
+    notifyListeners();
+  }
+
+  /// Asks the admin to add [meta] to the library, or adds this user to the request there is. Nothing is
+  /// downloaded: the admin adds it by hand.
+  Future<MediaRequest> askFor(StremioMeta meta) async {
+    final saved = await _require().askForTitle(requestFor(meta));
+    _requests = [
+      saved,
+      for (final r in _requests)
+        if (r.id != saved.id) r,
+    ];
+    notifyListeners();
+    return saved;
+  }
+
+  /// Takes this user off request [id].
+  Future<void> withdrawRequest(String id) async {
+    await _require().withdrawRequest(id);
+    await loadRequests();
+  }
+
   Future<Profile> profile() => _require().profile();
 
   /// Changes the display name others see; the config follows.
@@ -269,10 +317,11 @@ class HubSession extends ChangeNotifier {
       [c?.addon?.baseUrl ?? '', for (final a in c?.addons ?? const <ExtraAddon>[]) '${a.id}=${a.baseUrl}'].join(' ');
 
   void _applyConfig(AppConfig config) {
-    final changed = _sources(_config) != _sources(config);
+    final changed = _sources(_config) != _sources(config) || _titleSearch == null;
     _config = config;
     if (changed) {
       _catalog?.close();
+      _titleSearch?.close();
       final addon = config.addon;
       _catalog = addon == null && config.addons.isEmpty
           ? null
@@ -297,6 +346,16 @@ class HubSession extends ChangeNotifier {
                 name: 'OpenSubtitles',
               ),
             );
+      final set = _catalog is AddonSet ? _catalog as AddonSet : null;
+      _titleSearch = TitleSearch(
+        library: set?.primary,
+        sources: [
+          for (final e in set?.extras ?? const <ExtraSource>[]) e.client,
+          // Cinemeta finds any title; once is enough when the admin added it too.
+          if (!(set?.extras.any((e) => e.client.baseUrl == cinemetaAddon) ?? false))
+            StremioClient(baseUrl: cinemetaAddon, httpClient: _httpClient(), name: 'Cinemeta', strictStreams: false),
+        ],
+      );
     }
   }
 
@@ -304,8 +363,12 @@ class HubSession extends ChangeNotifier {
     await _store.clear();
     _hub?.close();
     _catalog?.close();
+    _titleSearch?.close();
     _hub = null;
     _catalog = null;
+    _titleSearch = null;
+    _requests = const [];
+    _requestsLoaded = false;
     _config = null;
     _trackers = const [];
     _problem = problem;
@@ -321,6 +384,7 @@ class HubSession extends ChangeNotifier {
   void dispose() {
     _hub?.close();
     _catalog?.close();
+    _titleSearch?.close();
     super.dispose();
   }
 }

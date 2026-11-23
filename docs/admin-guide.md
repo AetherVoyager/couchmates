@@ -62,6 +62,16 @@ own ids instead of IMDb ids (they won't match your library or watch parties), an
 An add-on where nothing works is added turned off. **Move up / down** sets the order of rows and which add-on gets the
 first say on details. Links to configured add-ons can hold keys, so the Hub stores them encrypted.
 
+## Requests
+
+The app's **Search** finds any movie or show: your library first, then your add-ons and Stremio's Cinemeta catalog.
+Titles that aren't in the library have a **Request** button. **Requests** lists them, with who asked (friends asking
+for the same title share one request). Answer with **Approve**, **Mark added** or **Decline**, and an optional note;
+whoever asked sees the status and note in the app. A declined title asked for again goes back to pending.
+
+A request never downloads anything. Getting the title is up to you: add it to Telegram-Stremio the usual way, then
+mark it added. The Overview shows how many requests are waiting.
+
 ## Overview
 
 Users and active devices, live streams, the library, Telegram bot health, data used per user (with a 7-day chart),

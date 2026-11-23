@@ -1,0 +1,29 @@
+{
+  "requests": [
+    {
+      "id": "0123456789abcdef",
+      "kind": "movie",
+      "title_id": "tt0133093",
+      "name": "The Matrix",
+      "year": "1999",
+      "poster": "https://images.metahub.space/poster/medium/tt0133093/img",
+      "status": "approved",
+      "note": "Adding it this weekend.",
+      "requested_by": ["Alice B.", "Bob"],
+      "mine": true,
+      "created_at": 1700000000,
+      "updated_at": 1700003600
+    },
+    {
+      "id": "fedcba9876543210",
+      "kind": "series",
+      "title_id": "tt0903747",
+      "name": "Breaking Bad",
+      "status": "pending",
+      "requested_by": ["Bob"],
+      "mine": false,
+      "created_at": 1700000100,
+      "updated_at": 1700000100
+    }
+  ]
+}

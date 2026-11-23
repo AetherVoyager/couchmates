@@ -29,6 +29,8 @@ pub struct Overview<'a> {
     pub week_labels: Vec<String>,
     /// (today, this month) in bytes, by Telegram-Stremio token hash.
     pub usage_by_token_hash: HashMap<String, (f64, f64)>,
+    /// Title requests waiting for an answer.
+    pub pending_requests: i64,
 }
 
 fn num(v: &Value, key: &str) -> Option<f64> {
@@ -52,6 +54,7 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
         }
         div.grid {
             div.card { div.label { "Users" } div.stat { (users.len()) } div.label { (data.active_devices) " devices active in the last 24 h" } }
+            div.card { div.label { "Requests" } div.stat { (data.pending_requests) } div.label { a href="/requests?status=pending" { "waiting for your answer" } } }
             div.card { div.label { "Streaming now" } div.stat { (live.len()) } div.label { "active Telegram-Stremio streams" } }
             div.card {
                 div.label { "In voice chat" } div.stat { (in_voice) }

@@ -107,7 +107,16 @@ class _HoverZoomState extends State<HoverZoom> {
 /// A title's poster; opens the details. [caption] adds the name and year
 /// underneath, for grids.
 class PosterCard extends StatelessWidget {
-  const PosterCard({super.key, required this.meta, this.width, this.progress, this.caption = false});
+  const PosterCard({
+    super.key,
+    required this.meta,
+    this.width,
+    this.progress,
+    this.caption = false,
+    this.onTap,
+    this.badge,
+    this.footer,
+  });
 
   final StremioMeta meta;
 
@@ -118,12 +127,21 @@ class PosterCard extends StatelessWidget {
   final double? progress;
   final bool caption;
 
+  /// Null: opens the details.
+  final VoidCallback? onTap;
+
+  /// Drawn over the poster's top-left corner, such as "In library".
+  final Widget? badge;
+
+  /// Drawn over the poster's bottom, such as a Request button.
+  final Widget? footer;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final art = HoverZoom(
       tooltip: caption ? null : meta.name,
-      onTap: () => openDetails(context, meta),
+      onTap: onTap ?? () => openDetails(context, meta),
       onDwell: () => prefetchTracks(context, meta),
       builder: (context, hovered) => AspectRatio(
         aspectRatio: posterAspect,
@@ -149,6 +167,8 @@ class PosterCard extends StatelessWidget {
                     child: Text(meta.name, textAlign: TextAlign.center, style: theme.textTheme.titleSmall),
                   ),
                 ),
+                if (badge != null) Positioned(left: 6, top: 6, child: badge!),
+                if (footer != null) Positioned(left: 6, right: 6, bottom: 6, child: footer!),
                 if (progress != null)
                   Align(
                     alignment: Alignment.bottomCenter,
