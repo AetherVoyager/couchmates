@@ -89,11 +89,19 @@ pub async fn create(mut req: Request, store: &Store) -> Result<Response> {
     if store.open_requests_of(&user.id).await? >= MAX_OPEN_PER_USER {
         return json_error("You have 50 requests waiting. Wait for the admin to get through some first.", 429);
     }
+    let before = store.media_request_for_title(&body.kind, &body.title_id).await?.map(|r| r.status);
     let row = store
         .ask_for_title(&user.id, &body.kind, &body.title_id, &body.name, body.year.as_deref(), body.poster.as_deref())
         .await?;
     match row {
-        Some(row) => web::json(&to_api(row), 200),
+        Some(row) => {
+            let request = to_api(row);
+            // New, or a declined one asked for again: the bot has something to do.
+            if before.is_none_or(|s| s == request_status::DECLINED) {
+                crate::bot::notify(store, &MediaRequest { mine: false, ..request.clone() }).await;
+            }
+            web::json(&request, 200)
+        }
         None => json_error("The request wasn't saved. Try again.", 500),
     }
 }

@@ -21,6 +21,55 @@ pub struct Request<'a> {
     pub changed: String,
 }
 
+/// The bot API's state on the page.
+pub struct BotAccess<'a> {
+    pub has_token: bool,
+    pub has_webhook: bool,
+    /// A token just made, shown this once.
+    pub new_token: Option<&'a str>,
+    /// The Hub's own address, for the examples.
+    pub hub: &'a str,
+}
+
+fn bot_card(bot: &BotAccess) -> Markup {
+    html! {
+        div.card {
+            h2 { "Bot access" }
+            p.muted {
+                "Let your own program answer requests: it lists them with " code { "GET /api/bot/requests" }
+                " and sets a status and note with " code { "POST /api/bot/requests/update" } ", sending "
+                code { "Authorization: Bearer <token>" } ". With a webhook address, each new request is also sent "
+                "there as it's made. The Hub only records the answers; getting the title is up to your program."
+            }
+            @if let Some(token) = bot.new_token {
+                div.flash.ok {
+                    "Your bot token. Copy it now: the Hub keeps only a fingerprint and can't show it again."
+                    div { span.code style="font-size:15px;letter-spacing:0;word-break:break-all" { (token) } }
+                }
+                pre style="white-space:pre-wrap;word-break:break-all" {
+                    "curl -H \"Authorization: Bearer " (token) "\" " (bot.hub) "/api/bot/requests"
+                }
+            }
+            div.row {
+                @if bot.has_token { span.pill.ok { "Token set" } } @else { span.pill { "No token" } }
+                form.inline method="post" action="/bot/token" {
+                    button.secondary type="submit" { @if bot.has_token { "Replace token" } @else { "Make a token" } }
+                }
+                @if bot.has_token {
+                    form.inline method="post" action="/bot/revoke" { button.danger type="submit" { "Turn off bot access" } }
+                }
+            }
+            form method="post" action="/bot/webhook" {
+                label for="bot_webhook" {
+                    "Webhook address (https)" @if bot.has_webhook { " — one is saved; leave blank to keep it, or type remove" }
+                }
+                input #bot_webhook type="url" name="url" placeholder="https://your-server.example/couchmates";
+                div.row { button.secondary type="submit" { "Save webhook" } }
+            }
+        }
+    }
+}
+
 /// The filter tabs: (query value, label).
 pub const FILTERS: &[(&str, &str)] = &[
     ("open", "Waiting"),
@@ -58,7 +107,7 @@ fn imdb_link(title_id: &str) -> Option<String> {
         .then(|| format!("https://www.imdb.com/title/{title_id}/"))
 }
 
-pub fn page(requests: &[Request], filter: &str, pending: i64, flash: Option<&Flash>) -> Markup {
+pub fn page(requests: &[Request], filter: &str, pending: i64, bot: &BotAccess, flash: Option<&Flash>) -> Markup {
     let body = html! {
         h1 { "Requests" }
         div.card {
@@ -132,6 +181,7 @@ pub fn page(requests: &[Request], filter: &str, pending: i64, flash: Option<&Fla
             }
         }
     };
+    let body = html! { (body) (bot_card(bot)) };
     layout("Requests", "/requests", flash, body)
 }
 
@@ -162,7 +212,9 @@ mod tests {
             asked: "just now".into(),
             changed: "just now".into(),
         };
-        let html = page(&[r], "open", 1, None).into_string();
+        let bot = BotAccess { has_token: false, has_webhook: false, new_token: Some("tok<en"), hub: "https://hub" };
+        let html = page(&[r], "open", 1, &bot, None).into_string();
+        assert!(html.contains("tok&lt;en") && html.contains("https://hub/api/bot/requests"));
         assert!(!html.contains("<script>x"));
         assert!(html.contains("Asked by Alice, Bob"));
         assert!(html.contains("/requests/abc/status"));

@@ -6,7 +6,7 @@ mod chat_live;
 
 pub use chat_live::ChatLive;
 
-use couchmates_hub_core::{api, chat, crypto, requests, social, store, tgs, web};
+use couchmates_hub_core::{api, bot, chat, crypto, requests, social, store, tgs, web};
 
 use worker::{Context, Env, Method, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
@@ -73,6 +73,15 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         };
     }
 
+    // Bot API: the admin's own program, with the bot token.
+    if let Some(rest) = path.strip_prefix("/api/bot/") {
+        return match (method, rest) {
+            (Method::Get, "requests") => bot::list(req, &store).await,
+            (Method::Post, "requests/update") => bot::update(req, &store).await,
+            _ => web::json_error("Not found", 404),
+        };
+    }
+
     if method == Method::Post && !web::same_origin(&req) {
         return Response::error("Cross-site form posts aren't allowed.", 403);
     }
@@ -123,6 +132,10 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         (Method::Post, ["requests", id, action]) => {
             let (id, action) = (id.to_string(), action.to_string());
             admin::request_action(req, &store, &id, &action).await
+        }
+        (Method::Post, ["bot", action]) => {
+            let action = action.to_string();
+            admin::bot_action(req, &store, &action).await
         }
         (Method::Get, ["settings"]) => admin::settings_page(&req, &store, None).await,
         (Method::Post, ["settings", "tgs"]) => admin::save_tgs(req, &store).await,

@@ -34,6 +34,7 @@ const SECRET_KEYS: &[&str] = &[
     "github_token",
     "trakt_client_secret",
     "tmdb_key",
+    "bot_webhook_url",
 ];
 
 /// Secret keys an earlier version stored unencrypted. A value that doesn't
@@ -995,6 +996,11 @@ impl Store {
             format!(" WHERE r.status IN ({})", marks.join(", "))
         };
         self.all(&format!("{REQUEST_SELECT}{filter} ORDER BY r.updated_at DESC LIMIT 300"), &args).await
+    }
+
+    pub async fn media_request_for_title(&self, kind: &str, title_id: &str) -> Result<Option<MediaRequestRow>> {
+        self.first(&format!("{REQUEST_SELECT} WHERE r.kind = ?2 AND r.title_id = ?3"), &[s(""), s(kind), s(title_id)])
+            .await
     }
 
     pub async fn media_request(&self, id: &str, user_id: &str) -> Result<Option<MediaRequestRow>> {

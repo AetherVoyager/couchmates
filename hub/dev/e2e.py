@@ -379,6 +379,46 @@ req3 = json.loads(body) if s == 200 else {}
 s, _, _ = call(anon, "/api/app/requests/cancel", data={"id": req3.get("id")}, headers=bob)
 s, _, body = call(anon, "/api/app/requests", headers=auth)
 check("a pending request nobody wants any more goes", [r["name"] for r in json.loads(body)["requests"]] == ["The Matrix"], body)
+# --- The bot API: the admin's own program answers requests
+FAKE = "http://127.0.0.1:8899"
+s, _, body = call(anon, "/api/bot/requests")
+check("bot API refuses without a token set up", s == 401, body)
+s, _, page = call(b, "/bot/token", form={})
+m = re.search(r"(cmb_[A-Za-z0-9_-]{20,})", page)
+check("the admin makes a bot token, shown once", s == 200 and m is not None)
+bot_tok = m.group(1) if m else ""
+botauth = {"authorization": "Bearer " + bot_tok}
+check("the token isn't shown again", bot_tok not in call(b, "/requests")[2])
+s, _, _ = call(anon, "/api/bot/requests", headers={"authorization": "Bearer cmb_wrong"})
+check("a wrong bot token is refused", s == 401)
+s, _, _ = call(anon, "/api/bot/requests", headers=auth)
+check("an app token isn't a bot token", s == 401)
+s, hd, _ = call(b, "/bot/webhook", form={"url": FAKE + "/bot-hook"})
+check("the admin saves a webhook", "Webhook saved" in urllib.parse.unquote_plus(hd.get("location", "")), hd.get("location"))
+s, _, body = call(anon, "/api/app/requests", data={"kind": "movie", "title_id": "tt0816692", "name": "Interstellar"}, headers=bob)
+req4 = json.loads(body) if s == 200 else {}
+hook = json.loads(urllib.request.urlopen(FAKE + "/bot-hook/last").read() or "null") or {}
+sig = "sha256=" + hmac.new(hashlib.sha256(bot_tok.encode()).hexdigest().encode(), hook.get("body", "").encode(), hashlib.sha256).hexdigest()
+check("a new request reaches the bot's webhook, signed", hook.get("event") == "request.created"
+      and json.loads(hook["body"])["request"]["id"] == req4.get("id") and hook.get("signature") == sig, hook)
+s, _, body = call(anon, "/api/bot/requests?status=pending", headers=botauth)
+check("the bot lists pending requests", s == 200 and req4.get("id") in [r["id"] for r in json.loads(body)["requests"]], body)
+s, _, body = call(anon, "/api/bot/requests?status=downloading", headers=botauth)
+check("an unknown filter is refused", s == 400, body)
+s, _, body = call(anon, "/api/bot/requests/update", data={"id": req4.get("id"), "status": "approved", "note": "On it"}, headers=botauth)
+check("the bot approves with a note", s == 200 and json.loads(body)["status"] == "approved" and json.loads(body)["note"] == "On it", body)
+s, _, body = call(anon, "/api/bot/requests/update", data={"id": req4.get("id"), "status": "added"}, headers=botauth)
+check("the bot marks it added; the note stays", s == 200 and json.loads(body)["status"] == "added" and json.loads(body)["note"] == "On it", body)
+s, _, body = call(anon, "/api/bot/requests/update", data={"id": req4.get("id"), "status": "lost"}, headers=botauth)
+check("a made-up status is refused", s == 400, body)
+s, _, body = call(anon, "/api/app/requests", headers=bob)
+check("bob sees it added", any(r["id"] == req4.get("id") and r["status"] == "added" for r in json.loads(body)["requests"]), body)
+call(b, f"/requests/{req4.get('id')}/delete", form={})
+call(b, "/bot/webhook", form={"url": "remove"})
+s, _, _ = call(b, "/bot/revoke", form={})
+s, _, _ = call(anon, "/api/bot/requests", headers=botauth)
+check("turning bot access off stops the token", s == 401)
+
 s, hd, _ = call(b, f"/requests/{req1.get('id')}/delete", form={"back": "all"})
 s, _, body = call(anon, "/api/app/requests", headers=auth)
 check("the admin can delete a request", json.loads(body) == {"requests": []}, body)

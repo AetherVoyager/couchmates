@@ -1,0 +1,15 @@
+{
+  "event": "request.created",
+  "request": {
+    "id": "fedcba9876543210",
+    "kind": "series",
+    "title_id": "tt0903747",
+    "name": "Breaking Bad",
+    "year": "2008–2013",
+    "status": "pending",
+    "requested_by": ["Bob"],
+    "mine": false,
+    "created_at": 1700000100,
+    "updated_at": 1700000100
+  }
+}

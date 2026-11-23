@@ -621,6 +621,25 @@ pub struct MediaRequestCreate {
     pub poster: Option<String>,
 }
 
+/// The bot API's answer to a request (`POST /api/bot/requests/update`, see `hub/core/src/bot.rs`). Without
+/// `note` the request keeps the one it has; an empty note clears it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaRequestUpdate {
+    pub id: String,
+    /// One of [`request_status::ALL`].
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// What the Hub POSTs to the bot's webhook. `event` is `request.created` for a new request or a declined one
+/// asked for again; bots ignore events they don't know.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BotWebhook {
+    pub event: String,
+    pub request: MediaRequest,
+}
+
 /// Takes the user's name off a request. A pending request nobody wants any more is removed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MediaRequestCancel {
@@ -697,5 +716,7 @@ mod tests {
         round_trips::<MediaRequest>(include_str!("../contract/media_request.json"));
         round_trips::<MediaRequestCreate>(include_str!("../contract/media_request_create.json"));
         round_trips::<MediaRequestCancel>(include_str!("../contract/media_request_cancel.json"));
+        round_trips::<MediaRequestUpdate>(include_str!("../contract/media_request_update.json"));
+        round_trips::<BotWebhook>(include_str!("../contract/bot_webhook.json"));
     }
 }

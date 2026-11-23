@@ -78,6 +78,9 @@ def verify_jwt(token: str) -> dict | None:
         return None
 
 
+BOT_HOOKS: list[dict] = []
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("fake: " + (fmt % args) + "\n")
@@ -171,6 +174,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"detail": "Not Found"}, 404)
 
     def do_GET(self):
+        if self.path == "/bot-hook/last":
+            return self.send_json(BOT_HOOKS[-1] if BOT_HOOKS else None)
         if self.path.startswith("/addons/"):
             kind, _, rest = self.path.removeprefix("/addons/").partition("/")
             return self.public_addon(kind, rest)
@@ -200,6 +205,11 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"detail": "Not Found"}, 404)
 
     def do_POST(self):
+        if self.path == "/bot-hook":
+            # A stand-in for the admin's bot: keeps what the Hub's webhook sent, for e2e.py.
+            BOT_HOOKS.append({"body": self.body().decode(), "event": self.headers.get("x-couchmates-event"),
+                              "signature": self.headers.get("x-couchmates-signature")})
+            return self.send_json({"ok": True})
         if self.path == "/login":
             form = urllib.parse.parse_qs(self.body().decode())
             if form.get("username") == [USERNAME] and form.get("password") == [PASSWORD]:

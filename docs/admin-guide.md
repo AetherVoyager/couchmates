@@ -72,6 +72,9 @@ whoever asked sees the status and note in the app. A declined title asked for ag
 A request never downloads anything. Getting the title is up to you: add it to Telegram-Stremio the usual way, then
 mark it added. The Overview shows how many requests are waiting.
 
+To let your own program answer requests, make a bot token under **Bot access** on the same page. The calls, the
+webhook and an example are in [`bot-api.md`](bot-api.md).
+
 ## Overview
 
 Users and active devices, live streams, the library, Telegram bot health, data used per user (with a 7-day chart),

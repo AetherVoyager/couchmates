@@ -8,6 +8,7 @@ use couchmates_hub_core::auth::{
     generated_password, hash_password, new_totp_secret, normalize_username, otpauth_uri, password_problem, qr_svg,
     verify_totp,
 };
+use couchmates_hub_core::bot;
 use couchmates_hub_core::catalog_check::{self, CatalogCheck};
 use couchmates_hub_core::crypto::{password_matches, random_token, sha256_hex};
 use couchmates_hub_core::livekit::{LiveKitConfig, normalize_server_url};
@@ -672,6 +673,15 @@ fn request_filter(filter: &str) -> &'static [&'static str] {
 }
 
 pub async fn requests_page(req: &Request, store: &Store, flash: Option<Flash>) -> Result<Response> {
+    requests_page_with(req, store, flash, None).await
+}
+
+async fn requests_page_with(
+    req: &Request,
+    store: &Store,
+    flash: Option<Flash>,
+    new_token: Option<&str>,
+) -> Result<Response> {
     let flash = flash.or_else(|| web::flash_from_query(req));
     let url = req.url()?;
     let asked = url.query_pairs().find(|(k, _)| k == "status").map(|(_, v)| v.into_owned()).unwrap_or_default();
@@ -695,7 +705,46 @@ pub async fn requests_page(req: &Request, store: &Store, flash: Option<Flash>) -
         })
         .collect();
     let pending = store.pending_request_count().await?;
-    page(ui::requests::page(&views, filter, pending, flash.as_ref()))
+    let hub = hub_address(req)?;
+    let bot = ui::requests::BotAccess {
+        has_token: store.setting(bot::TOKEN_HASH).await?.is_some(),
+        has_webhook: store.setting(bot::WEBHOOK).await?.is_some(),
+        new_token,
+        hub: &hub,
+    };
+    page(ui::requests::page(&views, filter, pending, &bot, flash.as_ref()))
+}
+
+/// Requests → Bot access: make or replace the token (shown once), turn it off, or save the webhook.
+pub async fn bot_action(mut req: Request, store: &Store, action: &str) -> Result<Response> {
+    match action {
+        "token" => {
+            let token = format!("cmb_{}", random_token());
+            store.set_setting(bot::TOKEN_HASH, Some(&sha256_hex(&token))).await?;
+            let flash = Flash::Ok("New bot token made. Any older one stopped working.".into());
+            requests_page_with(&req, store, Some(flash), Some(&token)).await
+        }
+        "revoke" => {
+            store.set_setting(bot::TOKEN_HASH, None).await?;
+            web::redirect_with("/requests", true, "Bot access is off. The old token no longer works.")
+        }
+        "webhook" => {
+            let typed = req.form_data().await?.get_field("url").unwrap_or_default().trim().to_string();
+            if typed.is_empty() {
+                return web::redirect("/requests");
+            }
+            if typed.eq_ignore_ascii_case("remove") {
+                store.set_setting(bot::WEBHOOK, None).await?;
+                return web::redirect_with("/requests", true, "Webhook removed. Your bot can still poll for requests.");
+            }
+            let Some(url) = bot::normalize_webhook(&typed) else {
+                return web::redirect_with("/requests", false, "The webhook needs an https:// address.");
+            };
+            store.set_setting(bot::WEBHOOK, Some(&url)).await?;
+            web::redirect_with("/requests", true, "Webhook saved. New requests are sent there as they're made.")
+        }
+        _ => web::redirect("/requests"),
+    }
 }
 
 /// Requests → a status button (with the note field) or Delete.

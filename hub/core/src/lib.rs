@@ -15,12 +15,14 @@
 //! - [`updates`]: app updates from GitHub Releases.
 //! - [`social`]: who's watching what, and requests to join.
 //! - [`requests`]: titles friends ask the admin to add.
+//! - [`bot`]: the bot API, for the admin's own program to answer requests.
 //! - [`usage`]: data use per day.
 //! - [`web`]: request and response helpers.
 
 pub mod addons;
 pub mod api;
 pub mod auth;
+pub mod bot;
 pub mod catalog_check;
 pub mod chat;
 pub mod crypto;

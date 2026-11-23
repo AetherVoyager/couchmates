@@ -28,6 +28,7 @@ imports Flutter widgets.
 | Friends using the app | [`docs/user-guide.md`](docs/user-guide.md) |
 | Working on the code (people and Claude) | [`CLAUDE.md`](CLAUDE.md) |
 | The app API | [`core/README.md`](core/README.md) |
+| The bot API for answering requests | [`docs/bot-api.md`](docs/bot-api.md) |
 | Each part | [`hub/README.md`](hub/README.md), [`app/core/README.md`](app/core/README.md), [`app/ui/README.md`](app/ui/README.md) |
 
 ## Checks
