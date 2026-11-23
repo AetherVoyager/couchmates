@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'chat/app_chat.dart';
 import 'screens/home_screen.dart';
 import 'screens/sign_in_screen.dart';
+import 'services/request_alerts.dart';
 import 'services/updater.dart';
 import 'theme.dart';
 import 'watch_together/friends.dart';
@@ -45,6 +46,15 @@ class CouchmatesApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => WatchTogether(session: session, navigator: navigatorKey, settings: settings),
+        ),
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (_) => requestUpdatesWithNotices(
+            session: session,
+            settings: settings,
+            messenger: messengerKey,
+            navigator: navigatorKey,
+          ),
         ),
         ChangeNotifierProvider(
           lazy: false,

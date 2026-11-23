@@ -29,6 +29,7 @@ export 'src/hub/api.dart';
 export 'src/hub/hub_client.dart';
 export 'src/library/home_feed.dart';
 export 'src/library/progress.dart';
+export 'src/library/request_updates.dart';
 export 'src/library/title_search.dart';
 export 'src/library/watchlist.dart';
 export 'src/rules.dart';

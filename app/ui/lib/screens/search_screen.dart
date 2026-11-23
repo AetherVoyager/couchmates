@@ -39,7 +39,10 @@ class _SearchViewState extends State<SearchView> {
   Future<void> _loadRequests() async {
     try {
       await context.read<HubSession>().loadRequests();
-      if (mounted) setState(() => _requestsError = null);
+      if (!mounted) return;
+      setState(() => _requestsError = null);
+      // The requests are on screen now, so their answers count as seen.
+      await context.read<RequestUpdates?>()?.markSeen();
     } catch (e) {
       if (mounted) setState(() => _requestsError = e);
     }

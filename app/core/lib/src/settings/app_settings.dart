@@ -111,6 +111,10 @@ abstract final class Settings {
 
   /// Per-person voice volumes as JSON (`{"<user id>": 1.4}`).
   static const voicePeople = Setting<String>('voice.people', '');
+
+  // Requests
+  /// Which request answers the user has seen and been told about, as JSON (see `RequestUpdates`).
+  static const seenRequests = Setting<String>('requests.seen', '');
 }
 
 /// The app's settings, loaded once and saved on every change.

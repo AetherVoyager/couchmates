@@ -25,7 +25,9 @@ Updates arrive in the app: when a new version is out, home shows **Update now**.
 - **Search** finds any movie or show, not just what's in the library. Titles you can play now say **In library**.
   For anything else, press **Request** to ask your host to add it; if a friend already asked, you're added to their
   request. With the search box empty, Search lists the requests and their status: *Requested*, *Approved*, *Added* or
-  *Declined*, with your host's note. Click one to withdraw yours.
+  *Declined*, with your host's note. Click one to withdraw yours. When your host answers one of yours, a dot shows on
+  **Search** until you look, and when a title you asked for reaches the library the app tells you, with a **Watch**
+  button.
 - **Catalog pages** have a Back arrow; Esc, Alt+← and the mouse's back button also go back.
 - **In the player:** Space pauses, ←/→ skip, ↑/↓ change the volume, M mutes, F goes full screen, N plays the next
   episode, and I shows media info. Audio and subtitle menus are bottom right.

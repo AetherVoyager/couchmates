@@ -316,6 +316,8 @@ class _SidePaneState extends State<_SidePane> {
     final floating = open && !w.pinned;
     final inRoom = context.select<WatchTogether, bool>((w) => w.room?.inRoom ?? false);
     final listCount = context.select<Watchlist, int>((w) => w.items.length);
+    // An answer to one of the user's requests they haven't seen in Search yet.
+    final unseenRequests = context.select<RequestUpdates, bool>((u) => u.hasUnseen);
 
     // The catalogue, grouped by type: Movies, then Shows, in the addon's order.
     final byType = <String, List<HomeRow>>{};
@@ -396,6 +398,7 @@ class _SidePaneState extends State<_SidePane> {
                   _PaneItem(
                     icon: Icons.search_rounded,
                     label: 'Search',
+                    badge: unseenRequests,
                     selected: page is _SearchPage,
                     open: open,
                     onTap: w.enabled ? () => w.onGo(const _SearchPage()) : null,
