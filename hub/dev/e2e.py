@@ -518,6 +518,13 @@ s, _, page = call(b, "/")
 check("the overview shows the bot and its events, escaped",
       "Request bot" in page and "Adding Dune" in page and "Online" not in page.split("Request bot")[1].split("</div>")[0]
       and "Search bot &lt;b&gt;timed out&lt;/b&gt;" in page, page[:300])
+s, hd, _ = call(b, "/bot/clear-log", form={})
+s, _, page = call(b, "/")
+check("the bot log can be cleared", "timed out" not in page and "Adding Dune" in page, page[:300])
+s, hd, _ = call(b, "/requests/clear", form={})
+check("clear answered says how many", "Cleared" in urllib.parse.unquote_plus(hd.get("location", "")), hd)
+s, _, body = call(anon, "/api/app/requests", headers=bob)
+check("an answered request is gone after clearing", all(r["id"] != req4.get("id") for r in json.loads(body)["requests"]), body)
 call(b, f"/requests/{req4.get('id')}/delete", form={})
 call(b, "/bot/webhook", form={"url": "remove"})
 s, _, _ = call(b, "/bot/revoke", form={})

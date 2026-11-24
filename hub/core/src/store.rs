@@ -7,6 +7,9 @@ use worker::{D1Database, Env, Result};
 
 use crate::crypto::{Sealer, random_id, sha256_hex};
 
+/// Days an Added or Declined request stays before the hourly cleanup deletes it.
+pub const ANSWERED_REQUEST_DAYS: i64 = 60;
+
 pub fn now() -> i64 {
     (worker::Date::now().as_millis() / 1000) as i64
 }
@@ -1191,8 +1194,39 @@ impl Store {
         Ok(())
     }
 
+    /// Deletes requests answered for good (Added or Declined) that last changed before [before], and says how many.
+    pub async fn delete_answered_requests(&self, before: i64) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            count: i64,
+        }
+        const ANSWERED: &str = "status IN ('added', 'declined') AND updated_at < ?1";
+        let row: Option<Row> = self
+            .first(&format!("SELECT COUNT(*) AS count FROM media_requests WHERE {ANSWERED}"), &[n(before as f64)])
+            .await?;
+        let count = row.map_or(0, |r| r.count);
+        if count > 0 {
+            self.db
+                .batch(vec![
+                    self.db
+                        .prepare(&format!(
+                            "DELETE FROM media_request_users WHERE request_id IN \
+                             (SELECT id FROM media_requests WHERE {ANSWERED})"
+                        ))
+                        .bind(&[n(before as f64)])?,
+                    self.db
+                        .prepare(&format!("DELETE FROM media_requests WHERE {ANSWERED}"))
+                        .bind(&[n(before as f64)])?,
+                ])
+                .await?;
+        }
+        Ok(count)
+    }
+
     pub async fn cleanup(&self) -> Result<()> {
         let now = now();
+        // Answered requests are kept for a while so friends see the answer, then dropped.
+        self.delete_answered_requests(now - ANSWERED_REQUEST_DAYS * 86_400).await?;
         self.db
             .batch(vec![
                 self.db.prepare("DELETE FROM admin_sessions WHERE expires_at < ?1").bind(&[n(now as f64)])?,

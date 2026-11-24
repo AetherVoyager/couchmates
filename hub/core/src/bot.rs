@@ -45,7 +45,8 @@ const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(4);
 
 /// A bot that reported this recently counts as online. It's meant to report every 30 seconds.
 pub const ONLINE_SECS: i64 = 150;
-const KEEP_EVENTS: usize = 50;
+/// How many bot events the Hub keeps; older ones drop off as new ones come.
+pub const KEEP_EVENTS: usize = 50;
 const EVENTS_PER_REPORT: usize = 20;
 const MAX_TEXT: usize = 200;
 

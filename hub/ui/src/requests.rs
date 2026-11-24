@@ -4,6 +4,7 @@
 use maud::{Markup, html};
 
 use crate::layout::{Flash, layout};
+use couchmates_hub_core::store::ANSWERED_REQUEST_DAYS as ANSWERED_DAYS;
 
 /// One request as the page shows it.
 pub struct Request<'a> {
@@ -120,8 +121,17 @@ pub fn page(requests: &[Request], filter: &str, pending: i64, bot: &BotAccess, f
                 "Whoever asked sees the status and your note in the app. Once an hour the Hub also checks "
                 "Telegram-Stremio and marks waiting requests Added when their title is there."
             }
-            form method="post" action="/requests/check" {
-                div.row { button.secondary type="submit" { "Check library now" } }
+            p.muted {
+                "Added and Declined requests are deleted " (ANSWERED_DAYS) " days after their last change, "
+                "so this list doesn't keep growing. Clear answered deletes them all now."
+            }
+            div.row {
+                form.inline method="post" action="/requests/check" {
+                    button.secondary type="submit" { "Check library now" }
+                }
+                form.inline method="post" action="/requests/clear" {
+                    button.danger type="submit" { "Clear answered" }
+                }
             }
             div.row {
                 @for (value, label) in FILTERS {

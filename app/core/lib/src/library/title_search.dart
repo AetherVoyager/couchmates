@@ -240,6 +240,12 @@ class RequestGroup {
     return RequestStatus.declined;
   }
 
+  /// Every request answered for good (Added or Declined).
+  bool get finished => requests.every((r) => !r.open);
+
+  /// When any of its requests last changed.
+  int get changedAt => requests.map((r) => r.updatedAt).reduce((a, b) => a > b ? a : b);
+
   /// "S1 E2, E3 · S2 E1" for episodes; null otherwise.
   String? get episodesText {
     if (!isEpisodes) return null;
@@ -272,3 +278,10 @@ List<RequestGroup> groupRequests(List<MediaRequest> requests) {
       ),
   ];
 }
+
+/// [groups] without the finished ones that last changed at or before [clearedAt] (seconds), which the user
+/// cleared from their list. Waiting ones always stay.
+List<RequestGroup> withoutCleared(List<RequestGroup> groups, int clearedAt) => [
+  for (final g in groups)
+    if (!g.finished || g.changedAt > clearedAt) g,
+];

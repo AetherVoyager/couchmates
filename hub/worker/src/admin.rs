@@ -14,10 +14,10 @@ use couchmates_hub_core::crypto::{password_matches, random_token, sha256_hex};
 use couchmates_hub_core::jellyfin;
 use couchmates_hub_core::livekit::{LiveKitConfig, normalize_server_url};
 use couchmates_hub_core::store::{Store, now};
-use couchmates_hub_core::tgs::{TgsClient, TgsConfig, normalize_base_url, token_usages};
+use couchmates_hub_core::tgs::{TgsClient, TgsConfig, TokenUsage, normalize_base_url, token_usages};
 use couchmates_hub_core::tmdb::Tmdb;
 use couchmates_hub_core::updates::{GitHubConfig, normalize_repo};
-use couchmates_hub_core::usage::daily_usage;
+use couchmates_hub_core::usage::{daily_usage, day_start, month_start, used_since};
 use couchmates_hub_core::web::{self, Flash};
 use couchmates_hub_ui as ui;
 use maud::Markup;
@@ -201,8 +201,8 @@ pub async fn overview(req: &Request, store: &Store) -> Result<Response> {
         }
         Err(e) => tgs_error = Some(e.to_string()),
     }
-    let usage_by_token_hash: HashMap<String, (f64, f64)> =
-        token_usages(&system).into_iter().map(|u| (sha256_hex(&u.token), (u.daily_bytes, u.monthly_bytes))).collect();
+    let token_usage: HashMap<String, TokenUsage> =
+        token_usages(&system).into_iter().map(|u| (sha256_hex(&u.token), u)).collect();
     let live: Vec<&Value> = streams
         .get("active_streams")
         .and_then(Value::as_array)
@@ -233,8 +233,20 @@ pub async fn overview(req: &Request, store: &Store) -> Result<Response> {
         None => ui::overview::VoiceStatus::NotConfigured,
     };
 
-    let history = store.usage_since(now - 8 * 86_400).await?;
+    let history = store.usage_since((now - 8 * 86_400).min(month_start(now))).await?;
     let (week, week_labels) = daily_usage(&history, 7, now);
+    // Today and this month from the running total and the Hub's hourly copies, falling back to
+    // Telegram-Stremio's own counters (which go stale for a quiet user) while the history is too short.
+    let usage_by_token_hash: HashMap<String, (f64, f64)> = users
+        .iter()
+        .filter_map(|u| {
+            let hash = u.tgs_token_hash.as_ref()?;
+            let t = token_usage.get(hash)?;
+            let today = used_since(&history, &u.id, t.total_bytes, day_start(now)).unwrap_or(t.daily_bytes);
+            let month = used_since(&history, &u.id, t.total_bytes, month_start(now)).unwrap_or(t.monthly_bytes);
+            Some((hash.clone(), (today, month)))
+        })
+        .collect();
     let data = ui::overview::Overview {
         users: &users,
         active_devices,
@@ -771,6 +783,10 @@ pub async fn bot_action(mut req: Request, store: &Store, action: &str) -> Result
             store.set_setting(bot::EVENTS, None).await?;
             web::redirect_with("/requests", true, "Bot access is off. The old token no longer works.")
         }
+        "clear-log" => {
+            store.set_setting(bot::EVENTS, None).await?;
+            web::redirect_with("/", true, "Bot log cleared.")
+        }
         "webhook" => {
             let typed = req.form_data().await?.get_field("url").unwrap_or_default().trim().to_string();
             if typed.is_empty() {
@@ -788,6 +804,18 @@ pub async fn bot_action(mut req: Request, store: &Store, action: &str) -> Result
         }
         _ => web::redirect("/requests"),
     }
+}
+
+/// Requests → Clear answered: deletes every Added or Declined request now, instead of waiting for the hourly
+/// cleanup.
+pub async fn clear_answered_requests(store: &Store) -> Result<Response> {
+    let count = store.delete_answered_requests(now() + 1).await?;
+    let message = match count {
+        0 => "No answered requests to clear.".to_string(),
+        1 => "Cleared 1 answered request.".to_string(),
+        n => format!("Cleared {n} answered requests."),
+    };
+    web::redirect_with("/requests", true, &message)
 }
 
 /// Requests → Check library now: marks requests Added whose titles Telegram-Stremio has.

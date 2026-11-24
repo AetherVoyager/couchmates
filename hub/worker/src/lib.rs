@@ -138,6 +138,7 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         }
         (Method::Get, ["requests"]) => admin::requests_page(&req, &store, None).await,
         (Method::Post, ["requests", "check"]) => admin::check_requests(&store).await,
+        (Method::Post, ["requests", "clear"]) => admin::clear_answered_requests(&store).await,
         (Method::Post, ["requests", id, action]) => {
             let (id, action) = (id.to_string(), action.to_string());
             admin::request_action(req, &store, &id, &action).await

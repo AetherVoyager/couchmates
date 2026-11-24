@@ -468,7 +468,8 @@ String _requestLine(MediaRequest r) {
   return rest == 0 ? 'Asked by you' : 'Asked by you and ${rest == 1 ? '1 other' : '$rest others'}';
 }
 
-/// Every request, mine first, with its status and the admin's note.
+/// Every request, mine first, with its status and the admin's note. Answered ones (Added or Declined) can be
+/// cleared from the list; waiting ones always show.
 class RequestsList extends StatelessWidget {
   const RequestsList({super.key, this.error, this.onRetry, this.padding = 24});
 
@@ -484,7 +485,8 @@ class RequestsList extends StatelessWidget {
       if (error != null) return MessageView(icon: Icons.cloud_off, message: errorText(error!), onRetry: onRetry);
       return const MessageView(icon: Icons.search, message: 'Type a title to search.');
     }
-    final groups = groupRequests(session.requests);
+    final settings = context.watch<AppSettings>();
+    final groups = withoutCleared(groupRequests(session.requests), settings.get(Settings.requestsClearedAt));
     final mine = groups.where((g) => g.mine).toList();
     final others = groups.where((g) => !g.mine).toList();
     if (mine.isEmpty && others.isEmpty) {
@@ -493,6 +495,7 @@ class RequestsList extends StatelessWidget {
         message: 'Type a title to search. If it isn\'t in the library, you can request it.',
       );
     }
+    final finished = groups.where((g) => g.finished).toList();
     Widget heading(String text) => Padding(
       padding: EdgeInsets.fromLTRB(padding, 20, padding, 6),
       child: Text(text, style: theme.textTheme.titleMedium),
@@ -502,6 +505,22 @@ class RequestsList extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
+          if (finished.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.fromLTRB(padding, 12, padding, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  // The Hub's own times, so this device's clock doesn't matter.
+                  onPressed: () => settings.set(
+                    Settings.requestsClearedAt,
+                    finished.map((g) => g.changedAt).reduce((a, b) => a > b ? a : b),
+                  ),
+                  icon: const Icon(Icons.clear_all),
+                  label: Text('Clear ${finished.length} answered'),
+                ),
+              ),
+            ),
           if (mine.isNotEmpty) heading('Your requests'),
           for (final g in mine) _RequestTile(group: g, padding: padding),
           if (others.isNotEmpty) heading('Friends asked for'),

@@ -101,13 +101,19 @@ mark it added, or let the Hub do it: once an hour it asks Telegram-Stremio about
 the ones it now has **Added**, an episode once that episode is listed (**Check library now** does the same at once). The Overview shows how many requests
 are waiting.
 
+Added and Declined requests are deleted 60 days after their last change, so the list doesn't keep growing;
+**Clear answered** deletes them all at once. Waiting and Approved ones are never removed this way.
+
 To let your own program answer requests, make a bot token under **Bot access** on the same page. The calls, the
 webhook and an example are in [`bot-api.md`](bot-api.md).
 
 ## Overview
 
 Users and active devices, live streams, the library, your request bot (online or offline, what it's doing, recent
-events and errors, when it reports through the bot API), Telegram bot health, data used per user (with a 7-day chart),
+events and errors, when it reports through the bot API; only its last 50 events are kept, and **Clear log** empties
+them), Telegram bot health, data used per user (with a 7-day chart; *Today* and *This month* count from midnight UTC
+and the 1st, worked out from the Hub's hourly copies of each user's running total, since Telegram-Stremio's own daily
+figure can stay on an old number while a user is idle),
 and **Voice chat now**: every voice room with each person's mic as *mic on*, *muted* or *no mic*, straight from
 LiveKit.
 

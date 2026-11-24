@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use couchmates_hub_core::bot::{BotView, ONLINE_SECS};
+use couchmates_hub_core::bot::{BotView, KEEP_EVENTS as BOT_EVENTS_KEPT, ONLINE_SECS};
 use couchmates_hub_core::livekit::{Mic, VoiceMember};
 use couchmates_hub_core::store::User;
 use maud::{Markup, html};
@@ -109,6 +109,12 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
                         }
                     }
                 }
+                div.row.muted {
+                    "Newest 12 shown. The Hub keeps only the bot's last " (BOT_EVENTS_KEPT) " events, so this never grows."
+                }
+                form.inline method="post" action="/bot/clear-log" {
+                    div.row { button.secondary type="submit" { "Clear log" } }
+                }
             }
         }
         div.card {
@@ -132,6 +138,7 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
                         }
                     }
                 }
+                div.row.muted { "Today and this month run from midnight UTC, worked out from the hourly totals." }
             }
         }
         @if let VoiceStatus::Rooms { detail, .. } = &data.voice {

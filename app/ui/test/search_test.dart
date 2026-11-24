@@ -243,4 +243,57 @@ void main() {
     expect(find.text('Requested'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Request'), findsNothing);
   });
+
+  testWidgets('answered requests can be cleared from the list', (tester) async {
+    Json req(String id, String name, String status, int at) => {
+      'id': id,
+      'kind': 'movie',
+      'title_id': id,
+      'name': name,
+      'status': status,
+      'requested_by': ['alice'],
+      'mine': true,
+      'created_at': 1,
+      'updated_at': at,
+    };
+    final sent = <http.Request>[];
+    final inner = fakeServers(sent);
+    final session = HubSession(
+      store: MemorySessionStore(const StoredSession(hubUrl: 'https://hub.example.com', token: 't', username: 'alice')),
+      deviceName: 'Test PC',
+      httpClient: () => MockClient((request) async {
+        if (request.url.path == HubPaths.requests && request.method == 'GET') {
+          return json({
+            'requests': [
+              req('tt1', 'Old Movie', RequestStatus.added, 100),
+              req('tt2', 'No Movie', RequestStatus.declined, 200),
+              req('tt3', 'Waiting Movie', RequestStatus.pending, 300),
+            ],
+          });
+        }
+        return inner.send(request).then(http.Response.fromStream);
+      }),
+    );
+    await tester.runAsync(session.restore);
+    final settings = AppSettings(MemorySettingsStore());
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: session),
+          ChangeNotifierProvider.value(value: settings),
+        ],
+        child: const MaterialApp(home: Scaffold(body: SearchView())),
+      ),
+    );
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.text('Old Movie'), findsOneWidget);
+    await tester.tap(find.text('Clear 2 answered'));
+    await tester.pumpAndSettle();
+    expect(find.text('Old Movie'), findsNothing);
+    expect(find.text('No Movie'), findsNothing);
+    expect(find.text('Waiting Movie'), findsOneWidget);
+    expect(find.textContaining('answered'), findsNothing);
+    expect(settings.get(Settings.requestsClearedAt), 200);
+  });
 }

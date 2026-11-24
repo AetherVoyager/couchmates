@@ -203,4 +203,27 @@ void main() {
     expect(groups.first.mine, isTrue);
     expect(groups.last.episodesText, isNull);
   });
+
+  test('clearing hides finished requests up to that time, never waiting ones', () {
+    MediaRequest r(String id, String title, String status, int at) => MediaRequest(
+      id: id,
+      kind: 'movie',
+      titleId: title,
+      name: title,
+      status: status,
+      mine: true,
+      createdAt: 1,
+      updatedAt: at,
+    );
+    final groups = groupRequests([
+      r('a', 'tt1', RequestStatus.added, 100),
+      r('b', 'tt2', RequestStatus.declined, 300),
+      r('c', 'tt3', RequestStatus.pending, 50),
+      r('d', 'tt4', RequestStatus.approved, 50),
+    ]);
+    expect([for (final g in withoutCleared(groups, 0)) g.first.titleId], ['tt1', 'tt2', 'tt3', 'tt4']);
+    // tt2 was answered after the clear, so it shows again.
+    expect([for (final g in withoutCleared(groups, 200)) g.first.titleId], ['tt2', 'tt3', 'tt4']);
+    expect([for (final g in withoutCleared(groups, 300)) g.first.titleId], ['tt3', 'tt4']);
+  });
 }
