@@ -18,3 +18,4 @@
 *.keystore
 key.properties
 credentials*.json
+__pycache__/
