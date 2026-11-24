@@ -349,7 +349,7 @@ class _ShareSwitch extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                share ? 'Others can see what you watch' : 'What you watch is hidden',
+                share ? 'Others can see what you watch' : 'What you watch is hidden from friends',
                 style: theme.textTheme.bodySmall,
               ),
             ),

@@ -43,6 +43,7 @@ void main() {
     roundTrips('profile_photo_upload.json', (j) => ProfilePhotoUpload.fromJson(j).toJson());
     roundTrips('presence_update.json', (j) => PresenceUpdate.fromJson(j).toJson());
     roundTrips('presence_update_idle.json', (j) => PresenceUpdate.fromJson(j).toJson());
+    roundTrips('presence_update_private.json', (j) => PresenceUpdate.fromJson(j).toJson());
     roundTrips('activity.json', (j) => Activity.fromJson(j).toJson());
     roundTrips('join_request_create.json', (j) => JoinRequestCreate.fromJson(j).toJson());
     roundTrips('join_request_answer.json', (j) => JoinRequestAnswer.fromJson(j).toJson());

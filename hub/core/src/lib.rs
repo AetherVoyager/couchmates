@@ -14,6 +14,7 @@
 //! - [`trackers`]: Trakt and Simkl linking and scrobbling.
 //! - [`updates`]: app updates from GitHub Releases.
 //! - [`social`]: who's watching what, and requests to join.
+//! - [`jellyfin`]: a read-only Jellyfin look-alike for the admin's Tracearr.
 //! - [`requests`]: titles friends ask the admin to add.
 //! - [`bot`]: the bot API, for the admin's own program to answer requests.
 //! - [`usage`]: data use per day.
@@ -26,6 +27,7 @@ pub mod bot;
 pub mod catalog_check;
 pub mod chat;
 pub mod crypto;
+pub mod jellyfin;
 pub mod livekit;
 pub mod requests;
 pub mod social;

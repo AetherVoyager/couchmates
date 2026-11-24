@@ -89,6 +89,11 @@ pub struct PresenceRow {
     pub watching_since: Option<i64>,
     #[serde(default)]
     pub photo_version: Option<i64>,
+    /// The address the device last reported from.
+    #[serde(default)]
+    pub ip: Option<String>,
+    #[serde(default)]
+    pub device_name: Option<String>,
 }
 
 /// A public Stremio add-on from the Add-ons page, with its URL opened.
@@ -840,8 +845,9 @@ impl Store {
     /// Every device's presence, for users who aren't turned off.
     pub async fn presence_rows(&self) -> Result<Vec<PresenceRow>> {
         self.all(
-            "SELECT p.device_id, p.user_id, u.name, p.seen_at, p.watching, p.watching_since, \
-             ph.version AS photo_version FROM presence p JOIN users u ON u.id = p.user_id \
+            "SELECT p.device_id, p.user_id, u.name, p.seen_at, p.watching, p.watching_since, p.ip, \
+             d.name AS device_name, ph.version AS photo_version FROM presence p JOIN users u ON u.id = p.user_id \
+             LEFT JOIN devices d ON d.id = p.device_id \
              LEFT JOIN photos ph ON ph.user_id = p.user_id WHERE u.disabled = 0",
             &[],
         )
@@ -855,17 +861,20 @@ impl Store {
         seen_at: i64,
         watching: Option<&str>,
         since: Option<i64>,
+        ip: &str,
     ) -> Result<()> {
         self.run(
-            "INSERT INTO presence (device_id, user_id, seen_at, watching, watching_since) VALUES (?1, ?2, ?3, ?4, ?5) \
+            "INSERT INTO presence (device_id, user_id, seen_at, watching, watching_since, ip) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
              ON CONFLICT(device_id) DO UPDATE SET user_id = excluded.user_id, seen_at = excluded.seen_at, \
-             watching = excluded.watching, watching_since = excluded.watching_since",
+             watching = excluded.watching, watching_since = excluded.watching_since, ip = excluded.ip",
             &[
                 s(device_id),
                 s(user_id),
                 n(seen_at as f64),
                 opt_s(watching),
                 since.map_or(JsValue::NULL, |v| n(v as f64)),
+                s(ip),
             ],
         )
         .await

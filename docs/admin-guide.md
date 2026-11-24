@@ -25,6 +25,7 @@ Hub's own secrets: [secrets.md](secrets.md).
 | **App updates** | Repository `AetherVoyager/couchmates` and a fine-grained GitHub token: this repo only, Contents read-only | Apps updating themselves |
 | **Trackers** | Trakt client ID + secret, Simkl client ID (register Couchmates on each site; the card links there) | Scrobbling (optional) |
 | **Cast photos (TMDB)** | A free TMDB key or read access token | Cast photos, age ratings, taglines, trailers (optional) |
+| **Tracearr** | Nothing: press **Make a key**, then add the Hub to Tracearr (below) | Following playback in Tracearr (optional) |
 
 ### Telegram-Stremio settings that matter
 
@@ -33,6 +34,27 @@ Hub's own secrets: [secrets.md](secrets.md).
   about it and has a **Turn off Hide Catalog** button.
 - **Visibility:** users get ordinary tokens, which only see titles whose visibility is public (or that allow their
   token). Your own owner token sees everything, so Stremio can look fine to you while friends see nothing.
+
+### Tracearr
+
+The Hub can answer like a Jellyfin server, so a [Tracearr](https://github.com/connorgallopo/Tracearr) you already run
+can follow who watches what on Couchmates: the title, position, device, address (for its maps and rules) and the
+file's resolution and codecs.
+
+1. In Hub **Settings → Tracearr**, press **Make a key** and copy it. It's shown once; **Replace key** makes a new one.
+2. In Tracearr, add a server of type **Jellyfin** with the address `<your hub>/jellyfin` and that key as the API key.
+
+What to expect:
+
+- Sessions come from the app's presence reports (every 20 seconds), so they need an app newer than 0.7.0 for position
+  and quality. Older apps show the title only, and apps with "Share what I'm watching" off don't show at all.
+- Everyone shows up, including people who turned off sharing with friends. The app's setting says the admin can
+  see it.
+- Everything is direct play. There's no library, so Tracearr's library, storage and new-item pages stay empty, and
+  history starts the day you connect it.
+- Tracearr can't stop a stream or send a message: the Hub refuses both.
+- Tracearr's optional live-update plugin isn't there; it polls instead, which is what it does for plain Jellyfin.
+- **Turn off** stops the key at once.
 
 ## Users
 

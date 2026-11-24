@@ -364,6 +364,40 @@ pub struct NowWatching {
     /// whose request to join was accepted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room: Option<String>,
+    /// The poster (an https URL), for the admin's Tracearr.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<String>,
+    /// Where playback is and what the file is, for the admin's Tracearr.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playback: Option<PlaybackInfo>,
+    /// The user turned off sharing what they watch: friends aren't shown it,
+    /// only the admin's Tracearr is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub private: bool,
+}
+
+/// The player's position and the file's format. Only the admin's Tracearr
+/// sees these.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PlaybackInfo {
+    pub position_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// Such as `hevc` or `h264`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_codec: Option<String>,
+    /// Such as `eac3` or `aac`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_codec: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_channels: Option<u32>,
+    /// Video bitrate in bits per second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bitrate: Option<i64>,
 }
 
 /// Another user, as everyone sees them.
@@ -765,6 +799,7 @@ mod tests {
         round_trips::<ProfilePhotoUpload>(include_str!("../contract/profile_photo_upload.json"));
         round_trips::<PresenceUpdate>(include_str!("../contract/presence_update.json"));
         round_trips::<PresenceUpdate>(include_str!("../contract/presence_update_idle.json"));
+        round_trips::<PresenceUpdate>(include_str!("../contract/presence_update_private.json"));
         round_trips::<Activity>(include_str!("../contract/activity.json"));
         round_trips::<JoinRequestCreate>(include_str!("../contract/join_request_create.json"));
         round_trips::<JoinRequestAnswer>(include_str!("../contract/join_request_answer.json"));

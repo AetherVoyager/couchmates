@@ -561,7 +561,7 @@ class DeviceSignOut {
   Json toJson() => {'device_id': deviceId};
 }
 
-/// What this device plays, for friends to see.
+/// What this device plays, for friends to see (and the admin's Tracearr).
 class NowWatching {
   const NowWatching({
     required this.title,
@@ -570,6 +570,9 @@ class NowWatching {
     required this.paused,
     this.episode,
     this.room,
+    this.poster,
+    this.playback,
+    this.private = false,
   });
 
   /// The movie, or the show for an episode.
@@ -585,6 +588,29 @@ class NowWatching {
   /// was accepted.
   final String? room;
 
+  /// The poster, an https URL.
+  final String? poster;
+
+  /// Where the player is and what the file is. Only the admin's Tracearr sees it.
+  final PlaybackInfo? playback;
+
+  /// Sharing what this user watches is off: friends aren't shown it, only the
+  /// admin's Tracearr is.
+  final bool private;
+
+  /// This with [playback] and [private] set, as it's sent.
+  NowWatching sent({PlaybackInfo? playback, required bool private}) => NowWatching(
+    title: title,
+    episode: episode,
+    metaType: metaType,
+    metaId: metaId,
+    paused: paused,
+    room: room,
+    poster: poster,
+    playback: playback,
+    private: private,
+  );
+
   factory NowWatching.fromJson(Json j) => NowWatching(
     title: j['title'] as String,
     episode: j['episode'] as String?,
@@ -592,6 +618,9 @@ class NowWatching {
     metaId: j['meta_id'] as String,
     paused: j['paused'] as bool,
     room: j['room'] as String?,
+    poster: j['poster'] as String?,
+    playback: j['playback'] == null ? null : PlaybackInfo.fromJson(j['playback'] as Json),
+    private: j['private'] as bool? ?? false,
   );
 
   Json toJson() => {
@@ -601,6 +630,9 @@ class NowWatching {
     'meta_id': metaId,
     'paused': paused,
     'room': ?room,
+    'poster': ?poster,
+    'playback': ?playback?.toJson(),
+    if (private) 'private': true,
   };
 
   @override
@@ -611,16 +643,86 @@ class NowWatching {
       other.metaType == metaType &&
       other.metaId == metaId &&
       other.paused == paused &&
-      other.room == room;
+      other.room == room &&
+      other.poster == poster &&
+      other.playback == playback &&
+      other.private == private;
 
   @override
-  int get hashCode => Object.hash(title, episode, metaType, metaId, paused, room);
+  int get hashCode => Object.hash(title, episode, metaType, metaId, paused, room, poster, playback, private);
+}
+
+/// The player's position and the file's format, for the admin's Tracearr.
+class PlaybackInfo {
+  const PlaybackInfo({
+    required this.positionMs,
+    this.durationMs,
+    this.width,
+    this.height,
+    this.videoCodec,
+    this.audioCodec,
+    this.audioChannels,
+    this.bitrate,
+  });
+
+  final int positionMs;
+  final int? durationMs;
+  final int? width;
+  final int? height;
+
+  /// Such as `hevc`.
+  final String? videoCodec;
+
+  /// Such as `eac3`.
+  final String? audioCodec;
+  final int? audioChannels;
+
+  /// Video bitrate in bits per second.
+  final int? bitrate;
+
+  factory PlaybackInfo.fromJson(Json j) => PlaybackInfo(
+    positionMs: (j['position_ms'] as num).toInt(),
+    durationMs: (j['duration_ms'] as num?)?.toInt(),
+    width: (j['width'] as num?)?.toInt(),
+    height: (j['height'] as num?)?.toInt(),
+    videoCodec: j['video_codec'] as String?,
+    audioCodec: j['audio_codec'] as String?,
+    audioChannels: (j['audio_channels'] as num?)?.toInt(),
+    bitrate: (j['bitrate'] as num?)?.toInt(),
+  );
+
+  Json toJson() => {
+    'position_ms': positionMs,
+    'duration_ms': ?durationMs,
+    'width': ?width,
+    'height': ?height,
+    'video_codec': ?videoCodec,
+    'audio_codec': ?audioCodec,
+    'audio_channels': ?audioChannels,
+    'bitrate': ?bitrate,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlaybackInfo &&
+      other.positionMs == positionMs &&
+      other.durationMs == durationMs &&
+      other.width == width &&
+      other.height == height &&
+      other.videoCodec == videoCodec &&
+      other.audioCodec == audioCodec &&
+      other.audioChannels == audioChannels &&
+      other.bitrate == bitrate;
+
+  @override
+  int get hashCode =>
+      Object.hash(positionMs, durationMs, width, height, videoCodec, audioCodec, audioChannels, bitrate);
 }
 
 class PresenceUpdate {
   const PresenceUpdate({this.watching});
 
-  /// Null when nothing plays, or sharing is turned off.
+  /// Null when nothing plays. With sharing turned off it's marked private.
   final NowWatching? watching;
 
   factory PresenceUpdate.fromJson(Json j) {

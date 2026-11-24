@@ -30,7 +30,11 @@ class Presence extends ChangeNotifier {
   NowWatching? _watching;
   NowWatching? get watching => _watching;
 
-  /// When false, the Hub is told nothing plays (the user is still online).
+  /// Where the player is now, read at each report while something plays.
+  PlaybackInfo? Function()? playback;
+
+  /// When false, what plays is sent marked private: friends don't see it,
+  /// only the admin's Tracearr does.
   bool get share => _share;
   bool _share = true;
   set share(bool value) {
@@ -113,7 +117,7 @@ class Presence extends ChangeNotifier {
     final hub = _hub();
     if (hub == null) return;
     try {
-      _apply(await hub.presence(_share ? _watching : null));
+      _apply(await hub.presence(_watching?.sent(playback: playback?.call(), private: !_share)));
       _offline = false;
     } on HubException {
       _offline = true;

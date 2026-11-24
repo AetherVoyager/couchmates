@@ -20,6 +20,10 @@ pub struct Settings<'a> {
     pub trakt_has_secret: bool,
     pub simkl_client_id: Option<&'a str>,
     pub tmdb_has_key: bool,
+    /// Tracearr can read the Hub's Jellyfin-style API.
+    pub tracearr_has_key: bool,
+    /// A Tracearr key just made, shown this once.
+    pub tracearr_new_key: Option<&'a str>,
     pub hub: &'a str,
 }
 
@@ -105,6 +109,33 @@ pub fn page(s: &Settings, flash: Option<&Flash>) -> Markup {
                 label for="tmdb_key" { "TMDB key" @if s.tmdb_has_key { " (saved; leave blank to keep it, or type 'remove')" } }
                 input #tmdb_key type="password" name="key" autocomplete="new-password";
                 div.row { button type="submit" { "Save and test" } }
+            }
+        }
+        div.card {
+            h2 { "Tracearr" }
+            p.muted {
+                "Optional. The Hub can answer like a Jellyfin server, so Tracearr can follow who watches what, from "
+                "where and on which device. In Tracearr, add a Jellyfin server with the address below and this key. "
+                "Everyone shows up there, including people who turned off sharing what they watch with friends. "
+                "There's no library, and Tracearr can't stop streams or send messages."
+            }
+            p { "Server address: " b { (s.hub) "/jellyfin" } }
+            @if let Some(key) = s.tracearr_new_key {
+                div.flash.ok {
+                    "Your API key. Copy it now: the Hub keeps only a fingerprint and can't show it again."
+                    div { span.code style="font-size:15px;letter-spacing:0;word-break:break-all" { (key) } }
+                }
+            }
+            div.row {
+                @if s.tracearr_has_key { span.pill.ok { "Key set" } } @else { span.pill { "No key" } }
+                form.inline method="post" action="/settings/tracearr/key" {
+                    button.secondary type="submit" { @if s.tracearr_has_key { "Replace key" } @else { "Make a key" } }
+                }
+                @if s.tracearr_has_key {
+                    form.inline method="post" action="/settings/tracearr/revoke" {
+                        button.secondary type="submit" { "Turn off" }
+                    }
+                }
             }
         }
         div.card {

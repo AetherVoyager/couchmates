@@ -63,9 +63,15 @@ class FriendsLink extends ChangeNotifier {
     if (opened) notifyListeners();
   }
 
+  /// Where the open player is, for the admin's Tracearr.
+  void playerPlayback(Playable playable, PlaybackInfo? Function() read) {
+    if (identical(_playable, playable)) presence.playback = read;
+  }
+
   void playerClosed(Playable playable) {
     if (!identical(_playable, playable)) return;
     _playable = null;
+    presence.playback = null;
     _playerControls = true;
     _update();
     notifyListeners();
@@ -84,6 +90,7 @@ class FriendsLink extends ChangeNotifier {
               metaId: p.meta.id,
               paused: _paused,
               room: room != null && room.inRoom ? room.rawCode : null,
+              poster: (p.meta.poster ?? '').startsWith('https://') ? p.meta.poster : null,
             ),
     );
   }

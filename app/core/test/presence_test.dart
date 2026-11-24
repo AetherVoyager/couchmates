@@ -42,12 +42,27 @@ void main() {
     expect(presence.requestTo('1111222233334444')?.accepted, isTrue);
   });
 
-  test('sends nothing playing when sharing is off', () async {
+  test('marks what plays private when sharing is off', () async {
     final (:presence, :sent) = make();
     presence.setWatching(watching);
     presence.share = false;
     await presence.poke();
-    expect(jsonDecode(sent.last.body), {'watching': null});
+    expect(jsonDecode(sent.last.body), {
+      'watching': {...watching.toJson(), 'private': true},
+    });
+  });
+
+  test('adds where the player is to each report', () async {
+    final (:presence, :sent) = make();
+    var position = 1000;
+    presence.playback = () => PlaybackInfo(positionMs: position, durationMs: 60000, width: 1920, height: 1080);
+    presence.setWatching(watching);
+    await presence.poke();
+    position = 21000;
+    await presence.poke();
+    final last = jsonDecode(sent.last.body)['watching'] as Map<String, dynamic>;
+    expect(last['playback'], {'position_ms': 21000, 'duration_ms': 60000, 'width': 1920, 'height': 1080});
+    expect(last.containsKey('private'), isFalse);
   });
 
   test('announces each new incoming and accepted request once', () async {

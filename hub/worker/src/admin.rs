@@ -11,6 +11,7 @@ use couchmates_hub_core::auth::{
 use couchmates_hub_core::bot;
 use couchmates_hub_core::catalog_check::{self, CatalogCheck};
 use couchmates_hub_core::crypto::{password_matches, random_token, sha256_hex};
+use couchmates_hub_core::jellyfin;
 use couchmates_hub_core::livekit::{LiveKitConfig, normalize_server_url};
 use couchmates_hub_core::store::{Store, now};
 use couchmates_hub_core::tgs::{TgsClient, TgsConfig, normalize_base_url, token_usages};
@@ -472,6 +473,15 @@ pub async fn user_action(
 // Settings
 
 pub async fn settings_page(req: &Request, store: &Store, flash: Option<Flash>) -> Result<Response> {
+    settings_page_with(req, store, flash, None).await
+}
+
+async fn settings_page_with(
+    req: &Request,
+    store: &Store,
+    flash: Option<Flash>,
+    tracearr_new_key: Option<&str>,
+) -> Result<Response> {
     let flash = flash.or_else(|| web::flash_from_query(req));
     let tgs_url = store.setting("tgs_url").await?;
     let tgs_username = store.setting("tgs_username").await?;
@@ -499,6 +509,8 @@ pub async fn settings_page(req: &Request, store: &Store, flash: Option<Flash>) -
         trakt_has_secret: store.setting("trakt_client_secret").await?.is_some(),
         simkl_client_id: simkl_client_id.as_deref(),
         tmdb_has_key: store.setting("tmdb_key").await?.is_some(),
+        tracearr_has_key: store.setting(jellyfin::KEY_HASH).await?.is_some(),
+        tracearr_new_key,
         hub: &hub,
     };
     page(ui::settings::page(&data, flash.as_ref()))
@@ -655,6 +667,26 @@ pub async fn save_tmdb(mut req: Request, store: &Store) -> Result<Response> {
             settings_page(&req, store, Some(Flash::Ok("TMDB works. Saved: titles now show cast photos.".into()))).await
         }
         Err(e) => settings_page(&req, store, Some(Flash::Bad(format!("Not saved: {e}.")))).await,
+    }
+}
+
+/// Settings → Tracearr: make or replace the Jellyfin-style API key (shown once), or turn it off.
+pub async fn tracearr_action(req: &Request, store: &Store, action: &str) -> Result<Response> {
+    match action {
+        "key" => {
+            let key = jellyfin::new_key();
+            store.set_setting(jellyfin::KEY_HASH, Some(&sha256_hex(&key))).await?;
+            if store.setting(jellyfin::SERVER_ID).await?.is_none() {
+                store.set_setting(jellyfin::SERVER_ID, Some(&jellyfin::new_key())).await?;
+            }
+            let flash = Flash::Ok("New Tracearr key made. Any older one stopped working.".into());
+            settings_page_with(req, store, Some(flash), Some(&key)).await
+        }
+        "revoke" => {
+            store.set_setting(jellyfin::KEY_HASH, None).await?;
+            web::redirect_with("/settings", true, "Tracearr access is off. The old key no longer works.")
+        }
+        _ => Response::error("Not found", 404),
     }
 }
 

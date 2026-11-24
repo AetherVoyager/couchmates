@@ -2,14 +2,14 @@
 //!
 //! Each app posts its presence every 20 seconds or so ([`presence`]); the
 //! answer lists everyone else. To stay inside the free plan's daily writes,
-//! a device's row is only rewritten when what it plays changes, or once a
-//! minute to keep it online.
+//! a device's row is only rewritten when what it plays changes, once a
+//! minute to keep it online, or when the position jumps (a seek).
 
 use std::collections::HashMap;
 
 use couchmates_core::api::{
     Activity, FriendActivity, FriendWatching, JoinRequest, JoinRequestAnswer, JoinRequestCancel, JoinRequestCreate,
-    NowWatching, Person, PresenceUpdate,
+    NowWatching, Person, PlaybackInfo, PresenceUpdate,
 };
 use couchmates_core::rules::room_for_watch_code;
 use worker::{Request, Response, Result};
@@ -22,6 +22,9 @@ use crate::web::{self, json_error};
 pub const ONLINE_SECS: i64 = 90;
 /// A row younger than this isn't rewritten unless what's playing changed.
 const REWRITE_SECS: i64 = 60;
+/// A position this far from where the stored one has run to is a seek, and
+/// is written straight away.
+const SEEK_MS: i64 = 15_000;
 /// Pending requests last this long, and answered ones stay listed this long.
 pub const REQUEST_SECS: i64 = 120;
 
@@ -44,10 +47,35 @@ pub fn clean(watching: NowWatching) -> Option<NowWatching> {
         meta_id,
         paused: watching.paused,
         room: watching.room.map(|r| capped(&r, 32)).filter(|r| room_for_watch_code(r).is_some()),
+        poster: watching.poster.filter(|p| p.starts_with("https://") && p.len() <= 500),
+        playback: watching.playback.map(clean_playback),
+        private: watching.private,
     })
 }
 
-fn parse(json: Option<&str>) -> Option<NowWatching> {
+fn clean_playback(p: PlaybackInfo) -> PlaybackInfo {
+    let short = |t: Option<String>| t.map(|t| capped(&t, 20)).filter(|t| !t.is_empty());
+    PlaybackInfo {
+        position_ms: p.position_ms.max(0),
+        duration_ms: p.duration_ms.filter(|d| *d > 0),
+        width: p.width.filter(|w| *w > 0 && *w <= 16_384),
+        height: p.height.filter(|h| *h > 0 && *h <= 16_384),
+        video_codec: short(p.video_codec),
+        audio_codec: short(p.audio_codec),
+        audio_channels: p.audio_channels.filter(|c| *c > 0 && *c <= 32),
+        bitrate: p.bitrate.filter(|b| *b > 0),
+    }
+}
+
+/// Where [w]'s player is [elapsed_secs] after it reported, if it kept playing.
+pub fn position_after(w: &NowWatching, elapsed_secs: i64) -> Option<i64> {
+    let p = w.playback.as_ref()?;
+    let moved = if w.paused { 0 } else { elapsed_secs.max(0) * 1000 };
+    let at = p.position_ms + moved;
+    Some(p.duration_ms.map_or(at, |d| at.min(d)))
+}
+
+pub fn parse(json: Option<&str>) -> Option<NowWatching> {
     serde_json::from_str(json?).ok()
 }
 
@@ -55,9 +83,15 @@ fn same_title(a: &NowWatching, b: &NowWatching) -> bool {
     a.meta_id == b.meta_id && a.episode == b.episode
 }
 
-/// What [row]'s device plays, if it's still online.
-fn live(row: &PresenceRow, now: i64) -> Option<NowWatching> {
+/// What [row]'s device plays, if it's still online, whether or not it's
+/// shared with friends.
+pub fn live_any(row: &PresenceRow, now: i64) -> Option<NowWatching> {
     if row.seen_at < now - ONLINE_SECS { None } else { parse(row.watching.as_deref()) }
+}
+
+/// What [row]'s device plays, if it's still online and shared with friends.
+fn live(row: &PresenceRow, now: i64) -> Option<NowWatching> {
+    live_any(row, now).filter(|w| !w.private)
 }
 
 /// The freshest online device of [user_id] that's playing something.
@@ -142,7 +176,25 @@ pub fn presence_write(
         (Some(w), Some(o)) if same_title(w, o) => stored.and_then(|r| r.watching_since).or(Some(now)),
         (Some(_), _) => Some(now),
     };
-    let unchanged = stored.is_some_and(|r| r.watching == json && r.seen_at >= now - REWRITE_SECS);
+    // The position moves on every report, so it only counts when it jumps.
+    let unchanged = stored.is_some_and(|r| {
+        r.seen_at >= now - REWRITE_SECS
+            && match (watching, &old) {
+                (None, None) => true,
+                (Some(w), Some(o)) => {
+                    let still = |x: &NowWatching| NowWatching { playback: None, ..x.clone() };
+                    let drift = match (w.playback.as_ref(), position_after(o, now - r.seen_at)) {
+                        (Some(p), Some(expected)) => (p.position_ms - expected).abs(),
+                        (None, None) => 0,
+                        _ => i64::MAX,
+                    };
+                    let format =
+                        |x: &NowWatching| x.playback.as_ref().map(|p| PlaybackInfo { position_ms: 0, ..p.clone() });
+                    still(w) == still(o) && format(w) == format(o) && drift < SEEK_MS
+                }
+                _ => false,
+            }
+    });
     (!unchanged).then_some((json, since))
 }
 
@@ -164,9 +216,14 @@ pub async fn presence(mut req: Request, store: &Store) -> Result<Response> {
     let watching = body.watching.and_then(clean);
     let mut rows = store.presence_rows().await?;
     let now = now();
+    let ip = web::client_ip(&req);
     let stored = rows.iter().position(|r| r.device_id == device.id);
-    if let Some((json, since)) = presence_write(stored.map(|i| &rows[i]), watching.as_ref(), now) {
-        store.save_presence(&user.id, &device.id, now, json.as_deref(), since).await?;
+    let moved = stored.is_some_and(|i| rows[i].ip.as_deref() != Some(ip.as_str()));
+    let write = presence_write(stored.map(|i| &rows[i]), watching.as_ref(), now).or_else(|| {
+        moved.then(|| (stored.and_then(|i| rows[i].watching.clone()), stored.and_then(|i| rows[i].watching_since)))
+    });
+    if let Some((json, since)) = write {
+        store.save_presence(&user.id, &device.id, now, json.as_deref(), since, &ip).await?;
         let row = PresenceRow {
             device_id: device.id.clone(),
             user_id: user.id.clone(),
@@ -175,6 +232,8 @@ pub async fn presence(mut req: Request, store: &Store) -> Result<Response> {
             watching: json,
             watching_since: since,
             photo_version: user.photo_version,
+            ip: Some(ip),
+            device_name: Some(device.name.clone()),
         };
         match stored {
             Some(i) => rows[i] = row,
@@ -261,6 +320,9 @@ mod tests {
             meta_id: id.into(),
             paused: false,
             room: room.map(Into::into),
+            poster: None,
+            playback: None,
+            private: false,
         }
     }
 
@@ -273,6 +335,8 @@ mod tests {
             watching: w.map(|w| serde_json::to_string(&w).unwrap()),
             watching_since: Some(seen_at - 100),
             photo_version: (user == "bob").then_some(7),
+            ip: None,
+            device_name: None,
         }
     }
 
@@ -347,11 +411,45 @@ mod tests {
     }
 
     #[test]
+    fn private_watching_stays_off_the_friends_list() {
+        let now = 10_000;
+        let hidden = NowWatching { private: true, ..watching("tt1", None) };
+        let rows = vec![row("d1", "bob", now, Some(hidden))];
+        let a = activity("me", &rows, &[], now);
+        assert!(a.friends[0].online && a.friends[0].watching.is_none());
+        assert!(playing("bob", &rows, now).is_none());
+        assert!(live_any(&rows[0], now).is_some());
+    }
+
+    #[test]
+    fn position_only_rewrites_on_a_seek() {
+        let now = 10_000;
+        let at = |ms: i64, paused: bool| NowWatching {
+            paused,
+            playback: Some(PlaybackInfo { position_ms: ms, duration_ms: Some(600_000), ..Default::default() }),
+            ..watching("tt1", None)
+        };
+        let stored = row("d", "me", now - 20, Some(at(100_000, false)));
+        // 20 seconds on, the player is 20 seconds further: nothing to write.
+        assert_eq!(presence_write(Some(&stored), Some(&at(121_000, false)), now), None);
+        // A seek is written.
+        assert!(presence_write(Some(&stored), Some(&at(400_000, false)), now).is_some());
+        // Paused, the position stands still.
+        let paused = row("d", "me", now - 20, Some(at(100_000, true)));
+        assert_eq!(presence_write(Some(&paused), Some(&at(100_500, true)), now), None);
+        assert!(presence_write(Some(&paused), Some(&at(130_000, true)), now).is_some());
+        assert_eq!(position_after(&at(590_000, false), 60), Some(600_000), "never past the end");
+    }
+
+    #[test]
     fn clean_caps_text_and_drops_bad_rooms() {
         let w = NowWatching { title: "  x ".repeat(100), room: Some("!!".into()), ..watching("tt1", None) };
         let c = clean(w).unwrap();
         assert!(c.title.chars().count() <= 200 && c.room.is_none());
         assert!(clean(NowWatching { title: " ".into(), ..watching("tt1", None) }).is_none());
         assert_eq!(clean(watching("tt1", Some("K7M-Q2X"))).unwrap().room.as_deref(), Some("K7M-Q2X"));
+        let poster = |p: &str| NowWatching { poster: Some(p.into()), ..watching("tt1", None) };
+        assert_eq!(clean(poster("http://x/p.jpg")).unwrap().poster, None);
+        assert!(clean(poster("https://x/p.jpg")).unwrap().poster.is_some());
     }
 }

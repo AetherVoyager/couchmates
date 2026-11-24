@@ -26,7 +26,9 @@ class FriendsSection extends StatelessWidget {
         SwitchSetting(
           setting: Settings.shareActivity,
           title: "Share what I'm watching",
-          subtitle: 'Others on your Hub see the title and can ask to join you. Your room code stays private.',
+          subtitle:
+              'Others on your Hub see the title and can ask to join you. Your room code stays private. '
+              "Your Hub's admin can always see what's playing.",
         ),
       ],
     );
@@ -116,8 +118,7 @@ class PlaybackSection extends StatelessWidget {
         SwitchSetting(
           setting: Settings.onlineSubtitles,
           title: 'Find subtitles online',
-          subtitle:
-              'Adds subtitles from OpenSubtitles (or the Hub\'s subtitle add-ons) when the file has none in your language',
+          subtitle: 'Adds subtitles from OpenSubtitles (or the Hub\'s subtitle add-ons) when the file has none in your language',
         ),
         ChoiceSetting<int>(
           setting: Settings.subtitleSize,

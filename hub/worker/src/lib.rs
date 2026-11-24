@@ -6,7 +6,7 @@ mod chat_live;
 
 pub use chat_live::ChatLive;
 
-use couchmates_hub_core::{api, bot, chat, crypto, requests, social, store, tgs, web};
+use couchmates_hub_core::{api, bot, chat, crypto, jellyfin, requests, social, store, tgs, web};
 
 use worker::{Context, Env, Method, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
@@ -84,6 +84,12 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         };
     }
 
+    // A Jellyfin look-alike for the admin's Tracearr, with its own API key.
+    if path.eq_ignore_ascii_case(jellyfin::PREFIX) || path.to_ascii_lowercase().starts_with("/jellyfin/") {
+        let rest = path[jellyfin::PREFIX.len()..].to_string();
+        return jellyfin::handle(req, &store, &rest).await;
+    }
+
     if method == Method::Post && !web::same_origin(&req) {
         return Response::error("Cross-site form posts aren't allowed.", 403);
     }
@@ -147,6 +153,10 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         (Method::Post, ["settings", "updates"]) => admin::save_updates(req, &store).await,
         (Method::Post, ["settings", "trackers"]) => admin::save_trackers(req, &store).await,
         (Method::Post, ["settings", "tmdb"]) => admin::save_tmdb(req, &store).await,
+        (Method::Post, ["settings", "tracearr", action]) => {
+            let action = action.to_string();
+            admin::tracearr_action(&req, &store, &action).await
+        }
         (Method::Post, ["settings", "2fa", "reset"]) => admin::reset_2fa(req, &store).await,
         (Method::Get, ["setup-2fa"]) => web::redirect("/"),
         _ => Response::error("Not found", 404),

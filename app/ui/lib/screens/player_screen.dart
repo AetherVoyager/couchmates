@@ -89,7 +89,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _watch = context.read<WatchTogether>();
     _watch.playing = _p;
-    _friends = context.read<FriendsLink>()..playerState(_p, paused: true);
+    _friends = context.read<FriendsLink>()
+      ..playerState(_p, paused: true)
+      ..playerPlayback(_p, _playbackInfo);
     _watch.addListener(_syncRoom);
     _watch.voice.addListener(_duck);
     _settings = context.read<AppSettings>();
@@ -120,6 +122,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       s.playheadJump.listen((_) => _attachedTo?.playerChanged()),
       s.playbackRestart.listen((_) {
         if (!_started) setState(() => _started = true);
+        unawaited(_readFormat());
       }),
       s.tracks.listen((v) {
         setState(() => _tracks = v);
@@ -138,6 +141,48 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (_playing) unawaited(_saveProgress());
     });
+  }
+
+  /// The file's format from mpv, read when playback (re)starts, for the
+  /// admin's Tracearr.
+  Map<String, String?> _format = const {};
+
+  Future<void> _readFormat() async {
+    const props = [
+      'current-tracks/video/codec',
+      'video-codec',
+      'width',
+      'height',
+      'video-bitrate',
+      'audio-codec-name',
+      'audio-params/channel-count',
+    ];
+    final next = <String, String?>{};
+    for (final p in props) {
+      try {
+        final v = await _player.getProperty(p);
+        next[p] = (v == null || v.isEmpty) ? null : v;
+      } catch (_) {
+        next[p] = null;
+      }
+    }
+    _format = next;
+  }
+
+  PlaybackInfo? _playbackInfo() {
+    int? number(String k) => double.tryParse(_format[k] ?? '')?.round();
+    final codec = _format['current-tracks/video/codec'] ?? _format['video-codec'];
+    return PlaybackInfo(
+      positionMs: _position.inMilliseconds,
+      durationMs: _duration > Duration.zero ? _duration.inMilliseconds : null,
+      width: number('width'),
+      height: number('height'),
+      // The short name (`hevc`); older mpv only has a description such as "HEVC (High Efficiency Video Coding)".
+      videoCodec: codec?.split(' ').first.toLowerCase(),
+      audioCodec: _format['audio-codec-name'],
+      audioChannels: number('audio-params/channel-count'),
+      bitrate: number('video-bitrate'),
+    );
   }
 
   Future<void> _open() async {

@@ -1,0 +1,12 @@
+{
+  "watching": {
+    "title": "Inception",
+    "meta_type": "movie",
+    "meta_id": "tt1375666",
+    "paused": true,
+    "playback": {
+      "position_ms": 120000
+    },
+    "private": true
+  }
+}

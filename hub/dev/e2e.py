@@ -291,6 +291,46 @@ check("alice clears it", s == 200 and not json.loads(body)["requests"], body)
 s, _, body = call(anon, "/api/app/join-requests", data={"to_user_id": json.loads(call(anon, "/api/app/config", headers=auth)[2])["user"]["id"]}, headers=bob)
 check("can't ask to join yourself... or someone idle", s in (400, 409), body)
 
+# --- Tracearr: a read-only Jellyfin look-alike under /jellyfin, with its own key
+s, _, body = call(anon, "/jellyfin/System/Info/Public")
+check("jellyfin public info answers without a key", s == 200 and json.loads(body)["ProductName"] == "Jellyfin Server", body)
+s, _, _ = call(anon, "/jellyfin/Sessions")
+check("jellyfin sessions need the key", s == 401)
+s, _, page = call(b, "/settings/tracearr/key", form={})
+m = re.search(r'<span class="code"[^>]*>([0-9a-f]{32})<', page)
+check("the admin makes a Tracearr key, shown once", s == 200 and m is not None)
+jf = {"authorization": 'MediaBrowser Client="Tracearr", Device="t", DeviceId="t", Version="1", Token="%s"' % (m.group(1) if m else "")}
+s, _, _ = call(anon, "/jellyfin/Sessions", headers={"authorization": 'MediaBrowser Token="' + "0" * 32 + '"'})
+check("a wrong jellyfin key is refused", s == 401)
+s, _, _ = call(anon, "/jellyfin/Users/Me", headers=jf)
+s2, _, _ = call(anon, "/jellyfin/Auth/Keys", headers=jf)
+check("the admin check works like an API key's", s == 400 and s2 == 200)
+private = {"title": "Severance", "episode": "S1 E3 · In Perpetuity", "meta_type": "series", "meta_id": "tt11280740",
+           "paused": False, "private": True,
+           "playback": {"position_ms": 60000, "duration_ms": 3000000, "width": 1920, "height": 1080, "video_codec": "hevc"}}
+s, _, body = call(anon, "/api/app/presence", data={"watching": private}, headers=bob)
+check("bob watches without sharing", s == 200, body)
+s, _, body = call(anon, "/api/app/presence", data={"watching": None}, headers=auth)
+bob_row = next(f for f in json.loads(body)["friends"] if f["person"]["id"] == bob_id)
+check("alice doesn't see what bob watches", bob_row["online"] and bob_row["watching"] is None, body)
+s, _, body = call(anon, "/jellyfin/Sessions", headers=jf)
+playing = [x for x in json.loads(body) if x.get("NowPlayingItem")]
+check("tracearr sees bob's episode", s == 200 and len(playing) == 1 and playing[0]["UserName"] == "Bob"
+      and playing[0]["NowPlayingItem"]["SeriesName"] == "Severance" and playing[0]["NowPlayingItem"]["IndexNumber"] == 3
+      and playing[0]["DeviceName"] == "Bob PC" and playing[0]["PlayState"]["PositionTicks"] >= 600000000, body)
+s, _, body = call(anon, "/jellyfin/Users", headers=jf)
+check("tracearr lists the users", s == 200 and {"Alice B.", "Bob"} <= {u["Name"] for u in json.loads(body)}, body)
+s, _, body = call(anon, "/jellyfin/Library/VirtualFolders", headers=jf)
+check("two empty libraries", s == 200 and len(json.loads(body)) == 2, body)
+s, _, body = call(anon, "/jellyfin/Items?Recursive=true", headers=jf)
+check("no items", s == 200 and json.loads(body)["TotalRecordCount"] == 0, body)
+s, _, _ = call(anon, "/jellyfin/Sessions/" + playing[0]["Id"] + "/Playing/Stop", data={}, headers=jf) if playing else (0, 0, 0)
+check("stopping a stream is refused", s == 501)
+s, hd, _ = call(b, "/settings/tracearr/revoke", form={})
+s2, _, _ = call(anon, "/jellyfin/Sessions", headers=jf)
+check("turning Tracearr off stops the key", s == 303 and s2 == 401)
+s, _, body = call(anon, "/api/app/presence", data={"watching": watching}, headers=bob)
+
 # --- Chat: public and private, saved, and pushed live over a WebSocket
 alice_id = json.loads(call(anon, "/api/app/config", headers=auth)[2])["user"]["id"]
 s, _, _ = call(anon, "/api/app/chat")

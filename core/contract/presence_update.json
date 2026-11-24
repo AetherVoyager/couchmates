@@ -5,6 +5,17 @@
     "meta_type": "series",
     "meta_id": "tt11280740",
     "paused": false,
-    "room": "K7MQ2X"
+    "room": "K7MQ2X",
+    "poster": "https://images.metahub.space/poster/medium/tt11280740/img",
+    "playback": {
+      "position_ms": 754000,
+      "duration_ms": 3120000,
+      "width": 1920,
+      "height": 1080,
+      "video_codec": "hevc",
+      "audio_codec": "eac3",
+      "audio_channels": 6,
+      "bitrate": 8400000
+    }
   }
 }
