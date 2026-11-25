@@ -1,15 +1,18 @@
 name: Build
 
-# Tests everything and builds the Windows app when a version tag (v0.2.1) is
-# pushed, then publishes it as a release. Can also be started by hand from
-# the Actions tab, which builds without releasing. Android joins once the
-# Android build is ready.
+# Tests everything, builds the Windows app and publishes it as a release when
+# the app's version (app/ui/pubspec.yaml) changes on main to one that has no
+# v<version> tag yet; the release creates the tag. Pushing a v* tag by hand
+# still releases too. Started by hand from the Actions tab, it builds without
+# releasing. Android joins once the Android build is ready.
 
 on:
   # Builds cost CI minutes (Windows runners count double on private repos),
   # so only version tags build. Run it by hand from the Actions tab when you
   # want a build without releasing; tests run locally before every push.
   push:
+    branches: [main]
+    paths: [app/ui/pubspec.yaml, .github/workflows/build.yml]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -26,8 +29,38 @@ env:
   FLUTTER_VERSION: "3.47.1"
 
 jobs:
+  # Decides what this run does: a push to main whose version already has a tag
+  # does nothing (the pubspec changed for another reason).
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          version=$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' app/ui/pubspec.yaml)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"; build=true; release=true
+          elif [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+              echo "v$version is already released"; build=false; release=false
+            else
+              build=true; release=true
+            fi
+          else
+            build=true; release=false
+          fi
+          echo "version=$version build=$build release=$release"
+          { echo "version=$version"; echo "build=$build"; echo "release=$release"; } >> "$GITHUB_OUTPUT"
+
   rust:
     name: Core and Hub tests
+    needs: version
+    if: needs.version.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,6 +70,8 @@ jobs:
 
   app-tests:
     name: App tests
+    needs: version
+    if: needs.version.outputs.build == 'true'
     runs-on: ubuntu-latest
     # The tests take a few minutes; a hung test shouldn't hold the release for long.
     timeout-minutes: 20
@@ -68,8 +103,11 @@ jobs:
   # all three, so a failing test never publishes.
   windows:
     name: Windows build
+    needs: version
+    if: needs.version.outputs.build == 'true'
     runs-on: windows-latest
     env:
+      VERSION: ${{ needs.version.outputs.version }}
       # Some git dependencies have paths longer than Windows' 260-character limit.
       GIT_CONFIG_COUNT: "1"
       GIT_CONFIG_KEY_0: core.longpaths
@@ -105,13 +143,10 @@ jobs:
           flutter precache --windows
           .\windows\tool\install-patched-engine.ps1
 
-      # A v1.2.3 tag builds version 1.2.3, so the app's own version (which it
-      # sends when checking for updates) matches the release.
+      # The release's version (a v1.2.3 tag builds 1.2.3), so the app's own
+      # version (which it sends when checking for updates) matches it.
       - name: Build
-        run: |
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
-          if ($env:GITHUB_REF -like 'refs/tags/v*') { $version = $env:GITHUB_REF_NAME.Substring(1) }
-          flutter build windows --release --build-name $version --build-number $env:GITHUB_RUN_NUMBER
+        run: flutter build windows --release --build-name $env:VERSION --build-number $env:GITHUB_RUN_NUMBER
 
       - name: Check the build
         run: |
@@ -124,9 +159,7 @@ jobs:
       # One setup .exe (Inno Setup) plus a portable .7z of the same folder.
       - name: Package
         run: |
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value
-          if ($env:GITHUB_REF -like 'refs/tags/v*') { $version = $env:GITHUB_REF_NAME.Substring(1) }
-          .\windows\build-installer.ps1 -X64BuildDir "build\windows\x64\runner\Release" -Version $version
+          .\windows\build-installer.ps1 -X64BuildDir "build\windows\x64\runner\Release" -Version $env:VERSION
           foreach ($f in "couchmates-windows-setup.exe", "couchmates-windows-x64-portable.7z") {
             if (-not (Test-Path $f)) { throw "Packaging didn't produce $f" }
             Move-Item $f "$env:GITHUB_WORKSPACE/$f"
@@ -135,19 +168,21 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: couchmates-windows-x64
-          # On a tag this only hands the files to the release job, which keeps
-          # the lasting copy; a hand-started build keeps it a week to download.
-          # The default 90 days stored ~135 MB per run for nothing.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 1 || 7 }}
+          # On a release this only hands the files to the release job, which
+          # keeps the lasting copy; a hand-started build keeps it a week to
+          # download. The default 90 days stored ~135 MB per run for nothing.
+          retention-days: ${{ needs.version.outputs.release == 'true' && 1 || 7 }}
           path: |
             couchmates-windows-setup.exe
             couchmates-windows-x64-portable.7z
 
-  # A version tag (v0.1.0) publishes a lasting release.
+  # Publishes a lasting release, creating the v<version> tag on this commit
+  # when it doesn't exist yet. A tag made with the workflow's token starts no
+  # other run, so the release isn't built twice.
   release:
     name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [rust, app-tests, windows]
+    if: needs.version.outputs.release == 'true'
+    needs: [version, rust, app-tests, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -157,6 +192,8 @@ jobs:
           name: couchmates-windows-x64
       - uses: softprops/action-gh-release@v3
         with:
+          tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: |
             couchmates-windows-setup.exe
             couchmates-windows-x64-portable.7z

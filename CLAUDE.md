@@ -66,8 +66,8 @@ see the docstring of `seed_local.py`). Restarting `fake_servers.py` forgets its 
   check the live route (a new app route should answer 401 without sign-in, not 404).
 - **Shell heredocs mangle long scripts** with quotes or backslashes. Write the script to the scratchpad with the
   Write tool and run `python -I file.py`.
-- **CI costs money**: Windows runners bill double on this private repo. `.github/workflows/build.yml` builds only on
-  `v*` tags or by hand. Run every suite locally before tagging.
+- **CI costs money**: Windows runners bill double on this private repo. `.github/workflows/build.yml` builds only
+  when the app's version changes on main (or on a `v*` tag, or by hand). Run every suite locally before bumping it.
 - **`flutter test` in `app/core` sometimes fails to load a test file** on the first run after edits (a compile race).
   Rerun before concluding anything.
 - **Telegram-Stremio**: the addon lives at `<server>/stremio/<token>/…`. Its "Hide Catalog" setting hides catalogs
@@ -80,12 +80,13 @@ see the docstring of `seed_local.py`). Restarting `fake_servers.py` forgets its 
 ## Releasing
 
 1. Run all suites (Rust, App Core, App UI) and the Hub e2e locally.
-2. Bump `version:` in `app/ui/pubspec.yaml` (the updater compares it), commit, push.
-3. `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`. CI tests, builds, and publishes the release with
-   `couchmates-windows-setup.exe` and a portable `.7z`. Apps update through the Hub, which needs the GitHub token in
-   Hub Settings.
-4. Hub changes deploy separately: from `hub/`, `npx wrangler d1 migrations apply couchmates-hub --remote` when there's
+2. Bump `version:` in `app/ui/pubspec.yaml` (the updater compares it), commit, push to main. That is the release:
+   when `vX.Y.Z` doesn't exist yet, CI tests, builds, creates the tag and publishes the release with
+   `couchmates-windows-setup.exe` and a portable `.7z`, so bump the version only when a release is asked for. No
+   hand-made tag is needed (the cloud can't push tags anyway); pushing one still works. Apps update through the
+   Hub, which needs the GitHub token in Hub Settings.
+3. Hub changes deploy separately: from `hub/`, `npx wrangler d1 migrations apply couchmates-hub --remote` when there's
    a new migration, then `npx wrangler deploy`. Check `/api/health` afterwards.
 
-Commit messages end with the co-author line the session asks for. Commit only when asked; never push tags or deploy
-unless asked.
+Commit messages end with the co-author line the session asks for. Commit only when asked; never bump the version, push
+tags or deploy unless asked.
