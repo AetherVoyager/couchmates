@@ -619,7 +619,7 @@ pub struct MediaRequest {
     /// The title's Stremio id, usually its IMDb id (`tt…`).
     pub title_id: String,
     pub name: String,
-    /// Free text such as `1999` or `2008–2013`.
+    /// The release year, four digits such as `1999` (a show's first year).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub year: Option<String>,
     /// An https poster link from the catalog that found it.

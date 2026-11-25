@@ -237,8 +237,8 @@ MediaRequestEpisodes episodesRequestFor(StremioMeta meta, List<StremioVideo> epi
   ],
 );
 
-String? _yearText(StremioMeta meta) =>
-    (meta.releaseInfo?.trim().isNotEmpty ?? false) ? meta.releaseInfo!.trim() : meta.year?.toString();
+/// The release year alone (a show's first year), as the Hub keeps it.
+String? _yearText(StremioMeta meta) => TitleSearch.yearOf(meta);
 
 String? _posterOf(StremioMeta meta) => (meta.poster?.startsWith('https://') ?? false) ? meta.poster : null;
 

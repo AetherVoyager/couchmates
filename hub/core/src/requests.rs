@@ -22,10 +22,21 @@ const MAX_EPISODE_TITLE: usize = 200;
 const MAX_NUMBER: u32 = 10_000;
 const MAX_TITLE_ID: usize = 100;
 const MAX_NAME: usize = 200;
-const MAX_YEAR: usize = 20;
 const MAX_POSTER: usize = 600;
 /// Longest admin note.
 pub const MAX_NOTE: usize = 300;
+
+/// The release year in a catalog's year text, such as `2008` from `2008–2013` or `Released 1999`: the first four
+/// digits in a row. None when there are none.
+pub fn release_year(text: &str) -> Option<String> {
+    let digits: Vec<char> = text.chars().collect();
+    (0..digits.len().saturating_sub(3)).find_map(|i| {
+        let run = &digits[i..i + 4];
+        let before = i > 0 && digits[i - 1].is_ascii_digit();
+        let after = digits.get(i + 4).is_some_and(char::is_ascii_digit);
+        (!before && !after && run.iter().all(char::is_ascii_digit)).then(|| run.iter().collect())
+    })
+}
 
 fn capped(text: &str, max: usize) -> String {
     text.trim().chars().take(max).collect()
@@ -45,7 +56,7 @@ pub fn clean(body: MediaRequestCreate) -> std::result::Result<MediaRequestCreate
     if name.is_empty() {
         return Err("Send the title's name.");
     }
-    let year = body.year.map(|y| capped(&y, MAX_YEAR)).filter(|y| !y.is_empty());
+    let year = body.year.as_deref().and_then(release_year);
     let poster = body
         .poster
         .map(|p| p.trim().to_string())
@@ -110,7 +121,7 @@ pub fn to_api(row: MediaRequestRow) -> MediaRequest {
         kind: row.kind,
         title_id: row.title_id,
         name: row.name,
-        year: row.year,
+        year: row.year.as_deref().and_then(release_year),
         poster: row.poster,
         season: row.season,
         episode: row.episode,
@@ -427,6 +438,10 @@ mod tests {
         assert_eq!(ok.title_id, "tt0133093");
         assert_eq!(ok.name, "The Matrix");
         assert_eq!(ok.year.as_deref(), Some("1999"));
+        assert_eq!(release_year("2008–2013").as_deref(), Some("2008"));
+        assert_eq!(release_year(" 2019- ").as_deref(), Some("2019"));
+        assert_eq!(release_year("12345 then 1987").as_deref(), Some("1987"));
+        assert_eq!(release_year("soon"), None);
         assert_eq!(ok.poster.as_deref(), Some("https://img.example/p.jpg"));
         assert_eq!(clean(ask("series", "kitsu:1", "x", Some("http://img.example/p.jpg"))).unwrap().poster, None);
         assert_eq!(clean(ask("series", "tt1", "x", Some("javascript:alert(1)"))).unwrap().poster, None);
