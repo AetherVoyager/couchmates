@@ -12,11 +12,8 @@
 #include <flutter_webrtc/flutter_web_r_t_c_plugin.h>
 #include <livekit_client/live_kit_plugin.h>
 #include <os_media_controls/os_media_controls_plugin_c_api.h>
-#include <screen_retriever_windows/screen_retriever_windows_plugin_c_api.h>
-#include <sentry_flutter/sentry_flutter_plugin.h>
 #include <universal_gamepad/gamepad_plugin_c_api.h>
 #include <url_launcher_windows/url_launcher_windows.h>
-#include <window_manager/window_manager_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   AutoUpdaterWindowsPluginCApiRegisterWithRegistrar(
@@ -31,14 +28,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("LiveKitPlugin"));
   OsMediaControlsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("OsMediaControlsPluginCApi"));
-  ScreenRetrieverWindowsPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("ScreenRetrieverWindowsPluginCApi"));
-  SentryFlutterPluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("SentryFlutterPlugin"));
   GamepadPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("GamepadPluginCApi"));
   UrlLauncherWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("UrlLauncherWindows"));
-  WindowManagerPluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("WindowManagerPlugin"));
 }
