@@ -14,6 +14,7 @@ import '../watch_together/watch_together.dart';
 import '../watch_together/watch_together_sheet.dart';
 import '../widgets/poster.dart';
 import 'catalog_screen.dart';
+import 'details_requests.dart';
 import 'details_screen.dart';
 import 'media_tracks.dart';
 import 'play.dart';
@@ -1137,11 +1138,12 @@ class _Billboard extends StatefulWidget {
 }
 
 class _BillboardState extends State<_Billboard> {
-  late final Future<StremioMeta?> _full = context
-      .read<HubSession>()
-      .catalog!
-      .meta(widget.item.type, widget.item.id)
-      .then<StremioMeta?>((m) => m, onError: (_) => null);
+  // Like Details: the library's copy when it has the title, otherwise another catalog's, so a title from an
+  // add-on's row that nothing can play offers Request instead of a Play with nothing behind it.
+  late final Future<TitleLookup?> _lookup = openTitle(
+    context.read<HubSession>(),
+    widget.item,
+  ).then<TitleLookup?>((l) => l, onError: (_) => null);
 
   @override
   Widget build(BuildContext context) {
@@ -1150,10 +1152,11 @@ class _BillboardState extends State<_Billboard> {
     final theme = Theme.of(context);
     final bg = theme.colorScheme.surface;
     final accent = theme.colorScheme.primary;
-    return FutureBuilder<StremioMeta?>(
-      future: _full,
+    return FutureBuilder<TitleLookup?>(
+      future: _lookup,
       builder: (context, snap) {
-        final meta = snap.data ?? widget.item;
+        final lookup = snap.data;
+        final meta = lookup?.meta ?? widget.item;
         final title = Text(
           meta.name,
           maxLines: 2,
@@ -1268,7 +1271,14 @@ class _BillboardState extends State<_Billboard> {
                       spacing: 12,
                       runSpacing: 12,
                       children: [
-                        PlayButton(onPressed: () => _play(context, meta)),
+                        // Until it's known whether anything can play it, neither Play nor Request.
+                        if (lookup != null && lookup.playable)
+                          PlayButton(onPressed: () => _play(context, meta))
+                        else if (lookup != null)
+                          RequestTitleButton(lookup: lookup)
+                        else if (snap.connectionState == ConnectionState.done)
+                          // The lookup failed: Play explains what's wrong, as it did before.
+                          PlayButton(onPressed: () => _play(context, meta)),
                         _GlassButton(
                           icon: Icons.info_outline_rounded,
                           label: 'Details',

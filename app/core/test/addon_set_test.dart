@@ -149,6 +149,22 @@ void main() {
     expect(seen.where((u) => u.contains('/stream/')), ['$own/stream/series/tt1:1:1.json']);
   });
 
+  test('watchable elsewhere only when an add-on answers with a stream the player can open', () async {
+    final set = make(withOwn: false);
+    expect(await set.streamsElsewhere('movie', 'tt1'), isTrue);
+    // Cinemeta takes tt ids for movies but has nothing for this one.
+    expect(await set.streamsElsewhere('movie', 'tt2'), isFalse);
+    expect(await set.streamsElsewhere('series', 'tt1:1:1'), isFalse);
+    final onlyLinks = routes()
+      ..['$cine/stream/movie/tt3.json'] = {
+        'streams': [
+          {'name': 'Netflix', 'externalUrl': 'https://netflix.example/title/3'},
+          {'name': 'Torrent', 'infoHash': 'abc'},
+        ],
+      };
+    expect(await make(withOwn: false, r: onlyLinks).streamsElsewhere('movie', 'tt3'), isFalse);
+  });
+
   test("the catalog's errors still surface when nothing else answers", () async {
     final r = routes()..remove('$own/manifest.json');
     await expectLater(make(extras: [], r: r).manifest(), throwsA(isA<StremioException>()));

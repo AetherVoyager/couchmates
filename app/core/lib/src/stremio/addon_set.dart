@@ -120,8 +120,29 @@ class AddonSet extends StremioClient {
     ];
   }
 
-  /// Whether one of the public add-ons can play this title, so it's watchable without being in the catalog.
-  Future<bool> streamsElsewhere(String type, String id) async => (await _offering('stream', type, id)).isNotEmpty;
+  /// Whether one of the public add-ons has a stream the player can open for this title, so it's watchable
+  /// without being in the catalog. An add-on that only says it takes the id (and then answers with nothing, or
+  /// only outside links and torrents) doesn't count: that showed Play on titles with nothing to play.
+  Future<bool> streamsElsewhere(String type, String id, {Duration timeout = const Duration(seconds: 8)}) async {
+    final others = await _offering('stream', type, id);
+    if (others.isEmpty) return false;
+    final found = Completer<bool>();
+    var left = others.length;
+    for (final e in others) {
+      unawaited(
+        e.client
+            .streams(type, id)
+            .timeout(timeout)
+            .then((s) => s.streams.isNotEmpty, onError: (Object _) => false)
+            .then((ok) {
+              left--;
+              if (found.isCompleted) return;
+              if (ok || left == 0) found.complete(ok);
+            }),
+      );
+    }
+    return found.future;
+  }
 
   @override
   Future<StremioMeta?> meta(String type, String id) async {

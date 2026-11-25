@@ -145,6 +145,73 @@ class _RequestTitleActionsState extends State<RequestTitleActions> {
   }
 }
 
+/// The one-button version of [RequestTitleActions], for over artwork (the home page's featured titles): Request
+/// (or I want it too, or every aired episode of a show), withdraw, or the request's status.
+class RequestTitleButton extends StatefulWidget {
+  const RequestTitleButton({super.key, required this.lookup});
+
+  final TitleLookup lookup;
+
+  @override
+  State<RequestTitleButton> createState() => _RequestTitleButtonState();
+}
+
+class _RequestTitleButtonState extends State<RequestTitleButton> {
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = context.watch<HubSession>();
+    final meta = widget.lookup.meta;
+    final episodes = (widget.lookup.full?.videos ?? const <StremioVideo>[])
+        .where((v) => isRequestableEpisode(v))
+        .toList();
+    if (meta.isSeries && episodes.isNotEmpty) {
+      final left = askable(session, meta, episodes);
+      return _BigButton(
+        icon: left.isEmpty ? Icons.check_rounded : Icons.playlist_add_rounded,
+        label: left.isEmpty
+            ? 'Requested'
+            : left.length == episodes.length
+            ? 'Request'
+            : 'Request the other ${left.length} episodes',
+        onPressed: _busy || left.isEmpty ? null : () => _run(() => askForEpisodes(context, meta, left)),
+      );
+    }
+    final request = session.requestOf(meta);
+    if (request == null || (!request.mine && request.status != RequestStatus.added)) {
+      return _BigButton(
+        icon: Icons.add_rounded,
+        label: request == null ? 'Request' : 'I want it too',
+        onPressed: _busy ? null : () => _run(() => askForTitle(context, meta)),
+      );
+    }
+    return Wrap(
+      spacing: 12,
+      runSpacing: 10,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (request.mine && request.open)
+          _BigButton(
+            icon: Icons.close_rounded,
+            label: 'Withdraw request',
+            onPressed: _busy ? null : () => _run(() => _withdraw(context, request)),
+          ),
+        RequestStatusChip(request: request),
+      ],
+    );
+  }
+}
+
 Future<void> _withdraw(BuildContext context, MediaRequest request) async {
   try {
     await context.read<HubSession>().withdrawRequest(request.id);
