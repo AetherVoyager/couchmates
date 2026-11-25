@@ -28,11 +28,15 @@ Updates arrive in the app: when a new version is out, home shows **Update now**.
   each, plus buttons for a whole season or every episode. The same goes for titles in the add-on rows on Home
   (such as Cinemeta's popular movies): if one isn't in the library, its page offers **Request** instead of Play.
   A show that is in the library but lacks some episodes lists them under **Episodes missing**, with **Request all
-  missing**. Episodes that haven't aired yet and specials can't be requested. With the search box empty, Search lists the requests and their status: *Requested*, *Approved*, *Added* or
-  *Declined*, with your host's note. Click one to withdraw yours. **Clear answered** hides the Added and Declined
-  ones from the list (on this device); they come back only if your host changes them again. When your host answers one of yours, a dot shows on
-  **Search** until you look, and when a title you asked for reaches the library the app tells you, with a **Watch**
-  button.
+  missing**. Episodes that haven't aired yet and specials can't be requested.
+- **Requests** in the side menu has four lists. *My requests* and *All requests* show each title's status
+  (*Requested*, *Approved*, *Added* or *Declined*) with your host's note, waiting ones most wanted first. Press
+  **Withdraw** to take yours back, or **I want it too** to join a friend's. **Clear answered** hides the Added and
+  Declined ones (on this device); they come back only if your host changes them again. *Just added* lists the
+  requested titles of the last month that are really playable now, each with **Play**. *Coming soon* shows the next
+  announced episode of each requested show and when it airs. When your host answers one of yours, a dot shows on
+  **Requests** until you look, and when a title you asked for reaches the library the app tells you, with a
+  **Watch** button.
 - **Catalog pages** have a Back arrow; Esc, Alt+← and the mouse's back button also go back.
 - **In the player:** Space pauses, ←/→ skip, ↑/↓ change the volume, M mutes, F goes full screen, N plays the next
   episode, and I shows media info. Audio and subtitle menus are bottom right.

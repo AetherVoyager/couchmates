@@ -116,7 +116,7 @@ abstract final class Settings {
   /// Which request answers the user has seen and been told about, as JSON (see `RequestUpdates`).
   static const seenRequests = Setting<String>('requests.seen', '');
 
-  /// Finished requests (Added or Declined) that last changed by this time (seconds) are hidden from Search.
+  /// Finished requests (Added or Declined) that last changed by this time (seconds) are hidden from the Requests tab.
   static const requestsClearedAt = Setting<int>('requests.cleared_at', 0);
 }
 

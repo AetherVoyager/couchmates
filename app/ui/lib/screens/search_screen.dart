@@ -6,10 +6,9 @@ import 'package:provider/provider.dart';
 
 import '../theme.dart';
 import '../widgets/poster.dart';
-import 'details_screen.dart';
 
 /// A search box over every catalog, with results as a poster grid. Titles in the library open as usual; the
-/// rest can be requested from the admin. With an empty box it lists the requests.
+/// rest can be requested from the admin (the Requests tab lists the requests).
 class SearchView extends StatefulWidget {
   const SearchView({super.key});
 
@@ -22,7 +21,6 @@ class _SearchViewState extends State<SearchView> {
   Timer? _debounce;
   Future<List<SearchHit>>? _results;
   String _searched = '';
-  Object? _requestsError;
 
   @override
   void initState() {
@@ -40,12 +38,8 @@ class _SearchViewState extends State<SearchView> {
   Future<void> _loadRequests() async {
     try {
       await context.read<HubSession>().loadRequests();
-      if (!mounted) return;
-      setState(() => _requestsError = null);
-      // The requests are on screen now, so their answers count as seen.
-      await context.read<RequestUpdates?>()?.markSeen();
-    } catch (e) {
-      if (mounted) setState(() => _requestsError = e);
+    } catch (_) {
+      // Only the request badges are missing; the Requests tab says what's wrong.
     }
   }
 
@@ -108,7 +102,12 @@ class _SearchViewState extends State<SearchView> {
     );
     Widget below;
     if (_results == null) {
-      below = RequestsList(error: _requestsError, onRetry: _loadRequests, padding: gutter);
+      below = const MessageView(
+        icon: Icons.search,
+        message:
+            'Type a title to search. If it isn\'t in the library, you can request it. Your requests are in '
+            'the Requests tab.',
+      );
     } else {
       below = FutureBuilder<List<SearchHit>>(
         future: _results,
@@ -466,108 +465,6 @@ String _requestLine(MediaRequest r) {
   if (!r.mine) return 'Asked by ${who.join(', ')}';
   final rest = who.length - 1;
   return rest == 0 ? 'Asked by you' : 'Asked by you and ${rest == 1 ? '1 other' : '$rest others'}';
-}
-
-/// Every request, mine first, with its status and the admin's note. Answered ones (Added or Declined) can be
-/// cleared from the list; waiting ones always show.
-class RequestsList extends StatelessWidget {
-  const RequestsList({super.key, this.error, this.onRetry, this.padding = 24});
-
-  final Object? error;
-  final VoidCallback? onRetry;
-  final double padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final session = context.watch<HubSession>();
-    final theme = Theme.of(context);
-    if (!session.requestsLoaded) {
-      if (error != null) return MessageView(icon: Icons.cloud_off, message: errorText(error!), onRetry: onRetry);
-      return const MessageView(icon: Icons.search, message: 'Type a title to search.');
-    }
-    final settings = context.watch<AppSettings>();
-    final groups = withoutCleared(groupRequests(session.requests), settings.get(Settings.requestsClearedAt));
-    final mine = groups.where((g) => g.mine).toList();
-    final others = groups.where((g) => !g.mine).toList();
-    if (mine.isEmpty && others.isEmpty) {
-      return const MessageView(
-        icon: Icons.search,
-        message: 'Type a title to search. If it isn\'t in the library, you can request it.',
-      );
-    }
-    final finished = groups.where((g) => g.finished).toList();
-    Widget heading(String text) => Padding(
-      padding: EdgeInsets.fromLTRB(padding, 20, padding, 6),
-      child: Text(text, style: theme.textTheme.titleMedium),
-    );
-    return RefreshIndicator(
-      onRefresh: () async => onRetry?.call(),
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 24),
-        children: [
-          if (finished.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.fromLTRB(padding, 12, padding, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  // The Hub's own times, so this device's clock doesn't matter.
-                  onPressed: () => settings.set(
-                    Settings.requestsClearedAt,
-                    finished.map((g) => g.changedAt).reduce((a, b) => a > b ? a : b),
-                  ),
-                  icon: const Icon(Icons.clear_all),
-                  label: Text('Clear ${finished.length} answered'),
-                ),
-              ),
-            ),
-          if (mine.isNotEmpty) heading('Your requests'),
-          for (final g in mine) _RequestTile(group: g, padding: padding),
-          if (others.isNotEmpty) heading('Friends asked for'),
-          for (final g in others) _RequestTile(group: g, padding: padding),
-        ],
-      ),
-    );
-  }
-}
-
-class _RequestTile extends StatelessWidget {
-  const _RequestTile({required this.group, required this.padding});
-
-  final RequestGroup group;
-  final double padding;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final r = group.first;
-    final episodes = group.episodesText;
-    final who = group.isEpisodes ? null : _requestLine(r);
-    final subtitle = [r.kind == 'series' ? 'Series' : 'Movie', ?r.year, ?episodes, ?who].join(' · ');
-    final notes = {for (final x in group.requests) ?x.note}.toList();
-    return ListTile(
-      contentPadding: EdgeInsets.symmetric(horizontal: padding, vertical: 4),
-      leading: SizedBox(
-        width: 40,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: AspectRatio(aspectRatio: posterAspect, child: NetImage(r.poster)),
-        ),
-      ),
-      title: Text(r.name),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: Cinema.muted)),
-          for (final n in notes.take(2)) Text('Admin: $n', style: theme.textTheme.bodySmall),
-        ],
-      ),
-      trailing: group.isEpisodes ? RequestGroupChip(group: group) : RequestStatusChip(request: r),
-      onTap: () => group.isEpisodes || r.kind == 'series'
-          ? Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DetailsScreen(item: group.meta)))
-          : showRequestSheet(context, group.meta),
-    );
-  }
 }
 
 /// [SearchView] as a page of its own.

@@ -11,7 +11,7 @@ import '../settings/app_settings.dart';
 /// Which of the user's requests the admin answered since they last looked, and which just reached the library.
 ///
 /// It asks the Hub for requests now and then while signed in ([every]), and also follows every reload the
-/// Search page does. Status changes on the user's own requests stay [unseen] until [markSeen] (Search shows
+/// Requests tab does. Status changes on the user's own requests stay [unseen] until [markSeen] (the Requests tab shows
 /// them). A request that became Added is announced once through [arrivals] (one per show when several of its
 /// episodes arrive together). What was seen and announced is kept
 /// in [Settings.seenRequests], so a restart doesn't announce anything again. The first time it runs it only
@@ -54,7 +54,7 @@ class RequestUpdates extends ChangeNotifier {
         notifyListeners();
       }
     }
-    // Follow reloads done elsewhere (the Search page).
+    // Follow reloads done elsewhere (the Requests and Search pages).
     if (signedIn && session.requestsLoaded && !identical(session.requests, _lastSeenList)) {
       _lastSeenList = session.requests;
       _compare(session.requests);

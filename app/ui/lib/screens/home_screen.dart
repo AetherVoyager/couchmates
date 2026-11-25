@@ -19,9 +19,10 @@ import 'details_screen.dart';
 import 'media_tracks.dart';
 import 'play.dart';
 import 'profile_screen.dart';
+import 'requests_screen.dart';
 import 'search_screen.dart';
 
-/// What the main area shows: home, search, My list, or one catalog.
+/// What the main area shows: home, search, My list, requests, or one catalog.
 sealed class _Page {
   const _Page();
 }
@@ -36,6 +37,10 @@ class _SearchPage extends _Page {
 
 class _MyListPage extends _Page {
   const _MyListPage();
+}
+
+class _RequestsPage extends _Page {
+  const _RequestsPage();
 }
 
 class _CatalogPage extends _Page {
@@ -317,7 +322,7 @@ class _SidePaneState extends State<_SidePane> {
     final floating = open && !w.pinned;
     final inRoom = context.select<WatchTogether, bool>((w) => w.room?.inRoom ?? false);
     final listCount = context.select<Watchlist, int>((w) => w.items.length);
-    // An answer to one of the user's requests they haven't seen in Search yet.
+    // An answer to one of the user's requests they haven't seen in Requests yet.
     final unseenRequests = context.select<RequestUpdates, bool>((u) => u.hasUnseen);
 
     // The catalogue, grouped by type: Movies, then Shows, in the addon's order.
@@ -399,7 +404,6 @@ class _SidePaneState extends State<_SidePane> {
                   _PaneItem(
                     icon: Icons.search_rounded,
                     label: 'Search',
-                    badge: unseenRequests,
                     selected: page is _SearchPage,
                     open: open,
                     onTap: w.enabled ? () => w.onGo(const _SearchPage()) : null,
@@ -412,6 +416,15 @@ class _SidePaneState extends State<_SidePane> {
                     selected: page is _MyListPage,
                     open: open,
                     onTap: () => w.onGo(const _MyListPage()),
+                  ),
+                  _PaneItem(
+                    icon: Icons.inbox_outlined,
+                    selectedIcon: Icons.inbox_rounded,
+                    label: 'Requests',
+                    badge: unseenRequests,
+                    selected: page is _RequestsPage,
+                    open: open,
+                    onTap: w.enabled ? () => w.onGo(const _RequestsPage()) : null,
                   ),
                   _PaneItem(
                     icon: Icons.groups_outlined,
@@ -794,6 +807,7 @@ class _Content extends StatelessWidget {
         ),
         _SearchPage() => const SearchView(),
         _MyListPage() => const _MyListView(),
+        _RequestsPage() => const RequestsView(),
         _CatalogPage(:final row) => CatalogView(
           key: ValueKey(_catalogKey(row.catalog)),
           catalog: row.catalog,

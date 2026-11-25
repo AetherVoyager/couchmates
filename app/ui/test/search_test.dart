@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:couchmates/screens/details_screen.dart';
+import 'package:couchmates/screens/requests_screen.dart';
 import 'package:couchmates/screens/search_screen.dart';
 import 'package:couchmates/widgets/poster.dart';
 import 'package:couchmates_core/couchmates_core.dart';
@@ -292,7 +293,7 @@ void main() {
           ChangeNotifierProvider.value(value: session),
           ChangeNotifierProvider.value(value: settings),
         ],
-        child: const MaterialApp(home: Scaffold(body: SearchView())),
+        child: const MaterialApp(home: Scaffold(body: RequestsView())),
       ),
     );
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));

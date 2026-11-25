@@ -94,7 +94,7 @@ class TitleSearch {
 
   Future<StremioMeta?> _inLibrary(StremioMeta item) async {
     final byId = await library!.meta(item.type, item.id);
-    if (byId != null && byId.id.isNotEmpty && await _libraryHasFile(byId)) return byId;
+    if (byId != null && byId.id.isNotEmpty && await libraryHasFile(byId)) return byId;
     // A library without IMDb ids: the same title by name and year.
     if (item.name.trim().isEmpty) return null;
     final List<StremioMeta> hits;
@@ -113,12 +113,15 @@ class TitleSearch {
   /// it doesn't have too, with TMDB's or Cinemeta's details, so a meta alone doesn't mean the title is there:
   /// that showed Play on every title of an add-on's row. A notice such as "Limit Reached" counts as there, and
   /// so does an answer that fails, so Play can explain what's wrong.
-  Future<bool> _libraryHasFile(StremioMeta meta) async {
+  ///
+  /// With [video], that episode of the show instead of its first.
+  Future<bool> libraryHasFile(StremioMeta meta, {StremioVideo? video}) async {
+    if (library == null) return false;
     final String id;
     if (meta.isSeries) {
-      final first = meta.videos.firstOrNull;
-      if (first == null) return false;
-      id = first.id;
+      final ep = video ?? meta.videos.firstOrNull;
+      if (ep == null) return false;
+      id = ep.id;
     } else {
       id = meta.id;
     }
