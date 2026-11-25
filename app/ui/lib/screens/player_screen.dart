@@ -437,7 +437,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     final room = _attachedTo;
     unawaited(() async {
-      if (room != null) await room.detach(_adapter);
+      try {
+        // Closing the player as a guest also leaves (and closes) the room.
+        if (room != null) await room.detach(_adapter);
+      } catch (_) {}
       await _player.dispose();
     }());
     if (_fullscreen) unawaited(_setFullscreen(false));
