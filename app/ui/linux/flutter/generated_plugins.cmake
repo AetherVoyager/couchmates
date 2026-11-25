@@ -7,7 +7,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_webrtc
   livekit_client
   os_media_controls
-  universal_gamepad
   url_launcher_linux
 )
 
