@@ -330,10 +330,10 @@ pub async fn tracker_poll(mut req: Request, store: &Store) -> Result<Response> {
         Err(r) => return Ok(r),
     };
     let poll = |status: &str, username: Option<String>| TrackerLinkPoll { status: status.into(), username };
-    let Some((device_code, user_code)) = store.tracker_pending(&user.id, &body.service).await? else {
+    let Some((device_code, _user_code)) = store.tracker_pending(&user.id, &body.service).await? else {
         return web::json(&poll("expired", None), 200);
     };
-    match keys.poll_link(&device_code, &user_code).await {
+    match keys.poll_link(&device_code).await {
         Ok(Poll::Pending) => web::json(&poll("pending", None), 200),
         Ok(Poll::Linked(tokens)) => {
             let username = keys.username(&tokens.access).await;

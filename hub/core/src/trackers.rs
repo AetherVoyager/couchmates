@@ -81,7 +81,9 @@ impl Keys {
         let (status, v) = if self.service == "trakt" {
             self.call(Method::Post, "/oauth/device/code", None, Some(&json!({ "client_id": self.client_id }))).await?
         } else {
-            self.call(Method::Get, &format!("/oauth/pin?client_id={}", self.client_id), None, None).await?
+            // Simkl's OAuth 2.0 device flow (RFC 8628). Its older `/oauth/pin`
+            // answers 400 for client IDs made since Simkl's OAuth 2.0 apps.
+            self.call(Method::Post, "/oauth2/device", None, Some(&json!({ "client_id": self.client_id }))).await?
         };
         if !(200..300).contains(&status) {
             return Err(format!(
@@ -94,7 +96,7 @@ impl Keys {
         Ok(LinkStart {
             device_code: text("device_code").ok_or("no device code in the answer")?,
             user_code: text("user_code").ok_or("no user code in the answer")?,
-            verification_url: text("verification_url").unwrap_or_else(|| {
+            verification_url: text("verification_url").or_else(|| text("verification_uri")).unwrap_or_else(|| {
                 if self.service == "trakt" {
                     "https://trakt.tv/activate".into()
                 } else {
@@ -107,7 +109,7 @@ impl Keys {
     }
 
     /// One poll of a link in progress.
-    pub async fn poll_link(&self, device_code: &str, user_code: &str) -> std::result::Result<Poll, String> {
+    pub async fn poll_link(&self, device_code: &str) -> std::result::Result<Poll, String> {
         if self.service == "trakt" {
             let body = json!({ "code": device_code, "client_id": self.client_id, "client_secret": self.client_secret });
             let (status, v) = self.call(Method::Post, "/oauth/device/token", None, Some(&body)).await?;
@@ -118,13 +120,13 @@ impl Keys {
                 _ => Poll::Expired,
             });
         }
-        let (status, v) =
-            self.call(Method::Get, &format!("/oauth/pin/{user_code}?client_id={}", self.client_id), None, None).await?;
-        Ok(match (status, v.get("result").and_then(Value::as_str)) {
-            (200, Some("OK")) if v.get("access_token").is_some() => Poll::Linked(tokens_from(&v)),
-            (200, _) => Poll::Pending,
-            _ => Poll::Expired,
-        })
+        let body = json!({
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "device_code": device_code,
+            "client_id": self.client_id,
+        });
+        let (status, v) = self.call(Method::Post, "/oauth2/token", None, Some(&body)).await?;
+        Ok(simkl_poll(status, &v))
     }
 
     /// The account name, for showing who's linked.
@@ -137,21 +139,27 @@ impl Keys {
         user.get("username").or_else(|| user.get("name")).and_then(Value::as_str).map(str::to_string)
     }
 
-    /// A fresh access token when Trakt's is about to expire (Simkl's don't).
+    /// A fresh access token when the current one is about to expire.
     async fn refreshed(&self, link: &TrackerLink) -> Option<Tokens> {
         let refresh = link.refresh_token.as_deref()?;
-        let body = json!({
-            "refresh_token": refresh,
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
-            "grant_type": "refresh_token",
-        });
-        let (status, v) = self.call(Method::Post, "/oauth/token", None, Some(&body)).await.ok()?;
+        let (path, body) = if self.service == "trakt" {
+            let body = json!({
+                "refresh_token": refresh,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+                "grant_type": "refresh_token",
+            });
+            ("/oauth/token", body)
+        } else {
+            let body = json!({ "refresh_token": refresh, "client_id": self.client_id, "grant_type": "refresh_token" });
+            ("/oauth2/token", body)
+        };
+        let (status, v) = self.call(Method::Post, path, None, Some(&body)).await.ok()?;
         (status == 200).then(|| tokens_from(&v))
     }
 
-    /// Sends one scrobble; refreshes Trakt's token first when needed.
+    /// Sends one scrobble; refreshes the token first when it's about to expire.
     pub async fn scrobble(
         &self,
         store: &Store,
@@ -160,12 +168,13 @@ impl Keys {
         s: &ScrobbleRequest,
     ) -> std::result::Result<(), String> {
         let mut token = link.access_token.clone();
-        if self.service == "trakt" && link.expires_at.is_some_and(|e| e < now() + 3600) {
+        if link.expires_at.is_some_and(|e| e < now() + 3600) {
             if let Some(t) = self.refreshed(link).await {
                 token = t.access.clone();
                 let updated = TrackerLink {
                     access_token: t.access,
-                    refresh_token: t.refresh,
+                    // Keep the old refresh token when the answer has none.
+                    refresh_token: t.refresh.or_else(|| link.refresh_token.clone()),
                     expires_at: t.expires_at,
                     ..link.clone()
                 };
@@ -202,6 +211,19 @@ pub enum Poll {
     Linked(Tokens),
     Expired,
     Denied,
+}
+
+/// One answer of Simkl's device token endpoint (RFC 8628 errors).
+fn simkl_poll(status: u16, v: &Value) -> Poll {
+    let error = v.get("error").and_then(Value::as_str);
+    match (status, error) {
+        (200, _) if v.get("access_token").and_then(Value::as_str).is_some_and(|t| !t.is_empty()) => {
+            Poll::Linked(tokens_from(v))
+        }
+        (_, Some("authorization_pending" | "slow_down")) | (429, _) => Poll::Pending,
+        (_, Some("access_denied")) => Poll::Denied,
+        _ => Poll::Expired,
+    }
 }
 
 fn tokens_from(v: &Value) -> Tokens {
@@ -260,6 +282,23 @@ mod tests {
             scrobble_body(&req("movie", "tt1375666", None, None)),
             json!({"progress": 12.35, "movie": {"ids": {"imdb": "tt1375666"}}})
         );
+    }
+
+    #[test]
+    fn simkl_device_polls() {
+        let pending = json!({"error": "authorization_pending", "error_description": "not yet"});
+        assert!(matches!(simkl_poll(400, &pending), Poll::Pending));
+        assert!(matches!(simkl_poll(400, &json!({"error": "slow_down"})), Poll::Pending));
+        assert!(matches!(simkl_poll(400, &json!({"error": "access_denied"})), Poll::Denied));
+        assert!(matches!(simkl_poll(400, &json!({"error": "expired_token"})), Poll::Expired));
+        let linked = json!({"access_token": "a", "expires_in": 3600, "refresh_token": "r", "created_at": 1000});
+        match simkl_poll(200, &linked) {
+            Poll::Linked(t) => {
+                assert_eq!((t.access.as_str(), t.refresh.as_deref()), ("a", Some("r")));
+                assert_eq!(t.expires_at, Some(4600));
+            }
+            _ => panic!("expected linked"),
+        }
     }
 
     #[test]
