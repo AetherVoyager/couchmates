@@ -35,6 +35,7 @@ void main() {
     roundTrips('tracker_link_poll.json', (j) => TrackerLinkPoll.fromJson(j).toJson());
     roundTrips('scrobble_episode.json', (j) => ScrobbleRequest.fromJson(j).toJson());
     roundTrips('scrobble_movie.json', (j) => ScrobbleRequest.fromJson(j).toJson());
+    roundTrips('scrobble_season_watched.json', (j) => ScrobbleRequest.fromJson(j).toJson());
     roundTrips('credits.json', (j) => Credits.fromJson(j).toJson());
     roundTrips('credits_none.json', (j) => Credits.fromJson(j).toJson());
     roundTrips('profile.json', (j) => Profile.fromJson(j).toJson());

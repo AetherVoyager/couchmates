@@ -243,13 +243,15 @@ pub struct TrackerLinkPoll {
     pub username: Option<String>,
 }
 
-/// What's playing, for the linked trackers. Only titles with an IMDb id can
-/// be scrobbled.
+/// What's playing, or what was marked watched, for the linked trackers. Only
+/// titles with an IMDb id can be sent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScrobbleRequest {
-    /// `start`, `pause` or `stop`.
+    /// `start`, `pause` or `stop` while playing; `watched` or `unwatched` when
+    /// marked in the app.
     pub action: String,
-    /// `movie` or `episode`.
+    /// `movie` or `episode`; `show` (only to mark) is a whole season when
+    /// [`season`](Self::season) is set, else the whole show.
     pub kind: String,
     /// The movie's IMDb id, or the show's for an episode.
     pub imdb: String,
@@ -834,6 +836,7 @@ mod tests {
         round_trips::<TrackerLinkPoll>(include_str!("../contract/tracker_link_poll.json"));
         round_trips::<ScrobbleRequest>(include_str!("../contract/scrobble_episode.json"));
         round_trips::<ScrobbleRequest>(include_str!("../contract/scrobble_movie.json"));
+        round_trips::<ScrobbleRequest>(include_str!("../contract/scrobble_season_watched.json"));
         round_trips::<Credits>(include_str!("../contract/credits.json"));
         round_trips::<Credits>(include_str!("../contract/credits_none.json"));
         round_trips::<Profile>(include_str!("../contract/profile.json"));

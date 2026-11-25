@@ -48,4 +48,23 @@ class Scrobbler {
   Future<void> playing(bool isPlaying, double fraction) => _report(isPlaying ? 'start' : 'pause', fraction);
 
   Future<void> stopped(double fraction) => _report('stop', fraction);
+
+  /// What marking [meta] watched or not watched in the app tells the
+  /// trackers: one [video], a whole [season] of a show, or (neither) the
+  /// whole movie or show. Null when it can't be sent (no IMDb id, or an
+  /// episode without a season and number).
+  static ScrobbleRequest? mark(StremioMeta meta, {StremioVideo? video, int? season, required bool watched}) {
+    final imdb = meta.id;
+    if (!RegExp(r'^tt\d+$').hasMatch(imdb)) return null;
+    if (video != null && (video.season == null || video.episode == null)) return null;
+    final kind = video != null ? 'episode' : (meta.isSeries ? 'show' : 'movie');
+    return ScrobbleRequest(
+      action: watched ? 'watched' : 'unwatched',
+      kind: kind,
+      imdb: imdb,
+      season: video?.season ?? (kind == 'show' ? season : null),
+      episode: video?.episode,
+      progress: watched ? 100 : 0,
+    );
+  }
 }

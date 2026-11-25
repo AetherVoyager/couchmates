@@ -10,6 +10,7 @@ import '../stremio/addon_set.dart';
 import '../stremio/models.dart';
 import '../stremio/online_subtitles.dart';
 import '../stremio/stremio_client.dart';
+import '../watch/scrobbler.dart';
 
 /// What's kept between launches: the Hub address and this device's token.
 class StoredSession {
@@ -215,6 +216,13 @@ class HubSession extends ChangeNotifier {
     try {
       await _hub?.scrobble(request);
     } catch (_) {}
+  }
+
+  /// Tells the linked trackers that [meta] (one [video], a [season], or all
+  /// of it) was marked watched or not watched. Never throws.
+  Future<void> markWatched(StremioMeta meta, {StremioVideo? video, int? season, required bool watched}) async {
+    final request = Scrobbler.mark(meta, video: video, season: season, watched: watched);
+    if (request != null) await scrobble(request);
   }
 
   final Map<String, Future<Credits>> _credits = {};
