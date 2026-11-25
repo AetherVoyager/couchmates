@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../hub/api.dart';
 import '../hub/hub_client.dart';
+import '../library/request_board.dart';
 import '../library/title_search.dart';
 import '../social/photo.dart';
 import '../stremio/addon_set.dart';
@@ -306,6 +307,29 @@ class HubSession extends ChangeNotifier {
   Future<void> withdrawRequest(String id) async {
     await _require().withdrawRequest(id);
     await loadRequests();
+  }
+
+  /// Takes this user off every request in [ids], then fetches the requests once.
+  Future<void> withdrawRequests(Iterable<String> ids) async {
+    final hub = _require();
+    try {
+      for (final id in ids) {
+        await hub.withdrawRequest(id);
+      }
+    } finally {
+      await loadRequests();
+    }
+  }
+
+  /// Adds this user to the waiting requests in [group] they aren't on yet ("I want it too"). Returns how many
+  /// requests they joined.
+  Future<int> joinRequests(RequestGroup group) async {
+    final meta = group.meta;
+    final episodes = group.joinableEpisodes;
+    if (episodes.isNotEmpty) return (await askForEpisodes(meta, episodes)).length;
+    if (group.joinable.isEmpty) return 0;
+    await askFor(meta);
+    return 1;
   }
 
   Future<Profile> profile() => _require().profile();
