@@ -157,6 +157,17 @@ class _WatchTogetherSheetState extends State<_WatchTogetherSheet> {
               : (room.state.media == null ? 'Waiting for the host to play something.' : _matchText(room)),
           style: theme.textTheme.bodyMedium,
         ),
+        if (!room.isHost && watch.choiceDismissed) ...[
+          const SizedBox(height: 8),
+          FilledButton.tonalIcon(
+            onPressed: () {
+              Navigator.of(context).maybePop();
+              watch.openChoice();
+            },
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Back to the party'),
+          ),
+        ],
         const SizedBox(height: 12),
         for (final p in room.people) _person(theme, room, p, voice.memberForPeer(p.peerId, p.name)),
         const Divider(height: 24),

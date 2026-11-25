@@ -55,7 +55,33 @@ class WatchTogether extends ChangeNotifier {
   StreamSubscription<owp.PartyEvent>? _events;
 
   /// What the player screen has open, so the room's choice isn't opened twice.
-  Playable? playing;
+  Playable? get playing => _playing;
+  Playable? _playing;
+  set playing(Playable? value) {
+    final closed = _playing;
+    _playing = value;
+    // Closing the player on the room's title means "not now": the room only
+    // opens it again when it moves to another title, or from [openChoice].
+    final choice = _room?.choice;
+    if (value == null && closed != null && choice != null && closed.url == choice.url) _dismissed = choice.url;
+  }
+
+  /// The room's title the user closed the player on.
+  String? _dismissed;
+
+  /// The user closed the player on what the room is watching.
+  bool get choiceDismissed {
+    final choice = _room?.choice;
+    return choice != null && choice.url == _dismissed;
+  }
+
+  /// Opens what the room is watching again after the user closed it.
+  void openChoice() {
+    _dismissed = null;
+    final room = _room;
+    if (room != null) _openChoice(room);
+    notifyListeners();
+  }
 
   /// The last thing worth telling the user, such as someone joining.
   final notices = StreamController<String>.broadcast();
@@ -99,6 +125,7 @@ class WatchTogether extends ChangeNotifier {
     final room = _room;
     if (room == null) return;
     _room = null;
+    _dismissed = null;
     room.removeListener(_onRoom);
     await _events?.cancel();
     _events = null;
@@ -125,10 +152,11 @@ class WatchTogether extends ChangeNotifier {
   /// Opens the room's choice in the player unless it's already open there.
   void _openChoice(WatchRoom room) {
     final choice = room.choice;
-    if (choice == null || room.isHost) return;
-    final current = playing;
+    if (choice == null || room.isHost || choice.url == _dismissed) return;
+    final current = _playing;
     if (current != null && current.url == choice.url) return;
-    playing = choice;
+    _dismissed = null;
+    _playing = choice;
     final nav = navigator.currentState;
     if (nav == null) return;
     if (current != null) {

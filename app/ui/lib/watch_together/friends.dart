@@ -3,6 +3,7 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:couchmates_core/couchmates_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'watch_together.dart';
 
@@ -24,15 +25,26 @@ class FriendsLink extends ChangeNotifier {
     _onSession();
     // Closing the app says so, so friends don't see this user online and
     // watching (and offering to join) until the Hub's timeout runs out.
+    // Flutter asks before exiting only in some cases, so the Windows runner
+    // also asks over couchmates/lifecycle when the window closes.
     _lifecycle = AppLifecycleListener(
       onExitRequested: () async {
-        await presence.leave(timeout: const Duration(milliseconds: 1500));
+        await _leave();
         return AppExitResponse.exit;
       },
     );
+    _closing.setMethodCallHandler((call) async {
+      if (call.method == 'closing') await _leave();
+      return null;
+    });
   }
 
   late final AppLifecycleListener _lifecycle;
+  static const _closing = MethodChannel('couchmates/lifecycle');
+  Future<void>? _leaving;
+
+  /// Tells the Hub this device is leaving, once, however the app closes.
+  Future<void> _leave() => _leaving ??= presence.leave(timeout: const Duration(milliseconds: 1500));
 
   final HubSession session;
   final AppSettings settings;
@@ -201,6 +213,7 @@ class FriendsLink extends ChangeNotifier {
   @override
   void dispose() {
     _lifecycle.dispose();
+    _closing.setMethodCallHandler(null);
     session.removeListener(_onSession);
     settings.removeListener(_onSettings);
     watch.removeListener(_update);

@@ -9,6 +9,10 @@
 static constexpr wchar_t kWindowPlacementKey[] = L"Software\\Plezy";
 static constexpr wchar_t kWindowPlacementValue[] = L"WindowPlacement";
 
+// How long a closing window waits for Dart to tell the Hub it's leaving.
+static constexpr UINT_PTR kCloseTimerId = 0xC10E;
+static constexpr UINT kCloseTimeoutMs = 2500;
+
 static UINT_PTR g_saveTimerId = 0;
 static HWND g_mainHwnd = nullptr;
 // When true, WM_WINDOWPOSCHANGED should not persist placement. Used while a
@@ -198,6 +202,7 @@ void FlutterWindow::OnDestroy() {
   }
 
   window_channel_ = nullptr;
+  lifecycle_channel_ = nullptr;
 
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
@@ -217,6 +222,31 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message, WPARAM const wparam
   }
 
   switch (message) {
+    case WM_CLOSE:
+      // Flutter only asks the framework before exiting when it thinks this is
+      // the process's last top-level window, which other windows (video,
+      // audio, voice) can spoil. So ask Dart here too: it reports to the Hub
+      // that this device is leaving, then answers, or the timer gives up.
+      if (!close_confirmed_ && lifecycle_channel_) {
+        if (!close_pending_) {
+          close_pending_ = true;
+          SetTimer(hwnd, kCloseTimerId, kCloseTimeoutMs, nullptr);
+          lifecycle_channel_->InvokeMethod(
+              "closing", nullptr,
+              std::make_unique<flutter::MethodResultFunctions<flutter::EncodableValue>>(
+                  [this](const flutter::EncodableValue*) { FinishClose(); },
+                  [this](const std::string&, const std::string&, const flutter::EncodableValue*) { FinishClose(); },
+                  [this]() { FinishClose(); }));
+        }
+        return 0;
+      }
+      break;
+    case WM_TIMER:
+      if (wparam == kCloseTimerId) {
+        FinishClose();
+        return 0;
+      }
+      break;
     case WM_DISPLAYCHANGE:
       // One bounded, serialized retry for a display that may have reconnected.
       mpv::DisplayModeManager::RecoverIfNeeded();
@@ -254,8 +284,19 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message, WPARAM const wparam
 // The channel also carries setDarkMode, the app's frame theme: window_manager's
 // setBrightness cannot make the caption darker than the OS app theme.
 // ---------------------------------------------------------------------------
+void FlutterWindow::FinishClose() {
+  if (close_confirmed_) return;
+  close_confirmed_ = true;
+  HWND hwnd = GetHandle();
+  if (!hwnd) return;
+  KillTimer(hwnd, kCloseTimerId);
+  PostMessage(hwnd, WM_CLOSE, 0, 0);
+}
+
 void FlutterWindow::RegisterWindowChannel() {
   auto messenger = flutter_controller_->engine()->messenger();
+  lifecycle_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      messenger, "couchmates/lifecycle", &flutter::StandardMethodCodec::GetInstance());
   window_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
       messenger, "plezy/window", &flutter::StandardMethodCodec::GetInstance());
 

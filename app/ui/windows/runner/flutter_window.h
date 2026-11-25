@@ -4,6 +4,7 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <flutter/method_channel.h>
+#include <flutter/method_result_functions.h>
 #include <flutter/standard_method_codec.h>
 
 #include <memory>
@@ -26,6 +27,13 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
 
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> window_channel_;
+
+  // Closing the window first lets Dart tell the Hub this device is leaving
+  // (couchmates/lifecycle "closing"), so friends see it offline at once.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> lifecycle_channel_;
+  bool close_pending_ = false;
+  bool close_confirmed_ = false;
+  void FinishClose();
 
   // Fullscreen state tracking for monitor-aware native fullscreen.
   // Maximize state lives inside `placement_before_fullscreen_.showCmd`.
