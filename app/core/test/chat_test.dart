@@ -150,6 +150,64 @@ void main() {
     expect(() => chat.send(id, '   '), throwsA(isA<HubException>()));
   });
 
+  test('moderation: admins delete and mute, deletions arrive live', () async {
+    final chat = make();
+    replies[HubPaths.chat] = sample('chat_overview_moderator.json');
+    replies[HubPaths.chatDelete] = '{"ok": true}';
+    replies[HubPaths.chatMute] = '{"ok": true}';
+    chat.start();
+    await settle();
+    chat.viewing = 'public';
+    await settle();
+    expect(chat.admin, isTrue);
+    expect(chat.channel('public')!.last!.from.admin, isTrue);
+    final thread = chat.thread('public');
+    expect(thread.messages.map((m) => m.id), [120, 121]);
+    final bobs = thread.messages.last;
+    expect(chat.canDelete(bobs), isTrue, reason: 'an admin, in public');
+    expect(chat.canDelete(msg(9, channel: directChannel(bob.id, carol.id))), isFalse);
+    expect(chat.canMute(bob), isTrue);
+    expect(chat.canMute(const Person(id: 'x', name: 'Other admin', admin: true)), isFalse);
+    expect(chat.canMute(const Person(id: me, name: 'Me')), isFalse);
+
+    await chat.delete(bobs);
+    expect(sent.last.url.path, HubPaths.chatDelete);
+    expect(jsonDecode(sent.last.body), {'id': 121});
+    expect(thread.messages.map((m) => m.id), [120]);
+
+    await chat.mute(bob, minutes: 60);
+    expect(jsonDecode(sent.last.body), {'user': bob.id, 'minutes': 60});
+    await chat.mute(bob);
+    expect(jsonDecode(sent.last.body), {'user': bob.id});
+
+    sockets.single.controller.add(jsonEncode(ChatEvent(kind: 'deleted', message: thread.messages.first).toJson()));
+    await settle();
+    expect(thread.messages, isEmpty);
+  });
+
+  test('a refresh frame picks up a mute', () async {
+    final chat = make();
+    chat.start();
+    await settle();
+    expect(chat.admin, isFalse);
+    expect(chat.mutedUntil, isNull);
+    replies[HubPaths.chat] = '{"channels": [], "muted_until": $chatMutedForever}';
+    sockets.single.controller.add('{"kind": "refresh"}');
+    await settle();
+    expect(chat.mutedUntil, chatMutedForever);
+    expect(
+      chat.canDelete(
+        msg(
+          1,
+          from: const Person(id: me, name: 'Me'),
+        ),
+      ),
+      isTrue,
+      reason: 'your own',
+    );
+    expect(chat.canDelete(msg(2)), isFalse);
+  });
+
   test('reconnects after the socket drops and catches up', () async {
     final chat = make();
     chat.start();

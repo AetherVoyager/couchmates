@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../chat/app_chat.dart';
 import '../chat/chat_view.dart';
+import '../chat/verified_name.dart';
 import '../widgets/person_avatar.dart';
 import '../widgets/poster.dart';
 import 'friends.dart';
@@ -520,11 +521,10 @@ class _FriendTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                VerifiedName(
                   friend.person.name,
+                  admin: friend.person.admin,
                   style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
                 if (w == null)
                   Text(friend.online ? 'Online' : 'Seen ${_ago(friend.lastSeen)}', style: muted)

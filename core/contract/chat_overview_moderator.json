@@ -1,0 +1,17 @@
+{
+  "channels": [
+    {
+      "id": "public",
+      "last": {
+        "id": 121,
+        "channel": "public",
+        "from": { "id": "1111222233334444", "name": "Ajesh", "admin": true },
+        "text": "Movie night at 9 🍿",
+        "sent_at": 1795280000
+      },
+      "unread": 0
+    }
+  ],
+  "admin": true,
+  "muted_until": 1795283600
+}

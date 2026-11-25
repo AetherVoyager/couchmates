@@ -33,6 +33,9 @@ String? roomForWatchCode(String code) {
 /// The chat channel everyone on the Hub can read.
 const publicChannel = 'public';
 
+/// `ChatOverview.mutedUntil` for a mute that lasts until an admin lifts it.
+const chatMutedForever = 253402300799;
+
 /// Longest chat message, in characters (Unicode code points, as the Hub counts).
 const maxChatChars = 2000;
 

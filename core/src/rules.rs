@@ -36,6 +36,10 @@ pub const PUBLIC_CHANNEL: &str = "public";
 /// Longest chat message, in characters.
 pub const MAX_CHAT_CHARS: usize = 2000;
 
+/// [`crate::api::ChatOverview::muted_until`] for a mute that lasts until an
+/// admin lifts it: the last second of the year 9999.
+pub const CHAT_MUTED_FOREVER: i64 = 253_402_300_799;
+
 /// The private chat between users [a] and [b]: `dm:<id>:<id>`, ids sorted.
 pub fn direct_channel(a: &str, b: &str) -> String {
     let (x, y) = if a <= b { (a, b) } else { (b, a) };

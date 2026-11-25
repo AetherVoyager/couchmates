@@ -10,6 +10,7 @@ use couchmates_hub_core::auth::{
 };
 use couchmates_hub_core::bot;
 use couchmates_hub_core::catalog_check::{self, CatalogCheck};
+use couchmates_hub_core::chat;
 use couchmates_hub_core::crypto::{password_matches, random_token, sha256_hex};
 use couchmates_hub_core::jellyfin;
 use couchmates_hub_core::livekit::{LiveKitConfig, normalize_server_url};
@@ -365,6 +366,7 @@ async fn user_page_with(
 pub async fn user_action(
     mut req: Request,
     store: &Store,
+    env: &Env,
     id: &str,
     action: &str,
     device: Option<&str>,
@@ -471,6 +473,35 @@ pub async fn user_action(
                 Err(e) => web::redirect_with(&back, false, &e.to_string()),
             }
         }
+        "chat-admin" | "chat-unadmin" => {
+            let admin = action == "chat-admin";
+            store.set_chat_admin(id, admin).await?;
+            if admin {
+                store.set_chat_muted(id, None).await?;
+            }
+            chat::refresh(env, id).await;
+            let message = if admin {
+                format!("{} is a chat admin now, with a verified badge.", user.name)
+            } else {
+                format!("{} isn't a chat admin any more.", user.name)
+            };
+            web::redirect_with(&back, true, &message)
+        }
+        "chat-mute" => {
+            if user.is_chat_admin() {
+                return web::redirect_with(&back, false, "Chat admins can't be muted. Remove chat admin first.");
+            }
+            let minutes = req.form_data().await?.get_field("minutes").unwrap_or_default();
+            let minutes = if minutes == "forever" { None } else { Some(minutes.parse::<u32>().unwrap_or(60).max(1)) };
+            store.set_chat_muted(id, chat::mute_until(now(), minutes)).await?;
+            chat::refresh(env, id).await;
+            web::redirect_with(&back, true, &format!("{} is muted in chat.", user.name))
+        }
+        "chat-unmute" => {
+            store.set_chat_muted(id, None).await?;
+            chat::refresh(env, id).await;
+            web::redirect_with(&back, true, &format!("{} can write in chat again.", user.name))
+        }
         "device-delete" => {
             if let Some(device) = device {
                 store.delete_device(id, device).await?;
@@ -506,6 +537,7 @@ async fn settings_page_with(
     };
     let trakt_client_id = store.setting("trakt_client_id").await?;
     let simkl_client_id = store.setting("simkl_client_id").await?;
+    let chat_words = store.setting(chat::BLOCKED_WORDS).await?;
     let hub = hub_address(req)?;
     let data = ui::settings::Settings {
         tgs_url: tgs_url.as_deref(),
@@ -523,6 +555,7 @@ async fn settings_page_with(
         tmdb_has_key: store.setting("tmdb_key").await?.is_some(),
         tracearr_has_key: store.setting(jellyfin::KEY_HASH).await?.is_some(),
         tracearr_new_key,
+        chat_blocked_words: chat_words.as_deref(),
         hub: &hub,
     };
     page(ui::settings::page(&data, flash.as_ref()))
@@ -642,6 +675,20 @@ pub async fn save_trackers(mut req: Request, store: &Store) -> Result<Response> 
         format!("Saved. Users can link {} in the app.", on.join(" and "))
     };
     settings_page(&req, store, Some(Flash::Ok(message))).await
+}
+
+/// Settings → Chat: the blocked words.
+pub async fn save_chat(mut req: Request, store: &Store) -> Result<Response> {
+    let typed = req.form_data().await?.get_field("words").unwrap_or_default();
+    let words = chat::parse_words(&typed);
+    let saved = words.join("\n");
+    store.set_setting(chat::BLOCKED_WORDS, (!words.is_empty()).then_some(saved.as_str())).await?;
+    let message = match words.len() {
+        0 => "Saved. No words are blocked.".to_string(),
+        1 => "Saved. 1 word is starred out in chat.".to_string(),
+        n => format!("Saved. {n} words are starred out in chat."),
+    };
+    web::redirect_with("/settings", true, &message)
 }
 
 /// Settings → "Turn off Hide Catalog".

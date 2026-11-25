@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../watch_together/friends.dart';
 import '../widgets/person_avatar.dart';
 import 'app_chat.dart';
+import 'verified_name.dart';
 
 /// The bubble's chat tab: the list of chats, or one conversation.
 class ChatView extends StatelessWidget {
@@ -76,7 +77,7 @@ class _ChannelList extends StatelessWidget {
                 online: f.online,
                 size: 34,
               ),
-              title: Text(f.person.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              title: VerifiedName(f.person.name, admin: f.person.admin),
               trailing: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
               onTap: () => chat.openWith(f.person),
             ),
@@ -110,10 +111,9 @@ class _ChannelTile extends StatelessWidget {
               child: Icon(Icons.forum_rounded, size: 20, color: scheme.onPrimaryContainer),
             )
           : PersonAvatar(id: person?.id ?? channel.id, name: person?.name ?? '?', photo: person?.photo, size: 38),
-      title: Text(
+      title: VerifiedName(
         chatTitle(channel),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        admin: person?.admin ?? false,
         style: TextStyle(fontWeight: unread ? FontWeight.w700 : FontWeight.w600),
       ),
       subtitle: Text(
@@ -165,6 +165,9 @@ class _ConversationState extends State<_Conversation> {
   bool _sending = false;
   String? _error;
 
+  /// What a moderation step did, shown where errors show.
+  String? _note;
+
   @override
   void initState() {
     super.initState();
@@ -210,6 +213,51 @@ class _ConversationState extends State<_Conversation> {
     return KeyEventResult.ignored;
   }
 
+  /// Runs a moderation [action], showing what went wrong under the messages.
+  Future<void> _moderate(Future<void> Function() action, {String? done}) async {
+    setState(() {
+      _error = null;
+      _note = null;
+    });
+    try {
+      await action();
+      if (done != null && mounted) setState(() => _note = done);
+    } on HubException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  List<_Action> _actions(ChatMessage m) {
+    final from = m.from;
+    final first = from.name.split(' ').first;
+    return [
+      if (_chat.canDelete(m))
+        _Action(Icons.delete_outline_rounded, 'Delete message', () => _moderate(() => _chat.delete(m))),
+      if (_chat.canMute(from)) ...[
+        _Action(
+          Icons.volume_off_outlined,
+          'Mute $first for 1 hour',
+          () => _moderate(() => _chat.mute(from, minutes: 60), done: '$first is muted for an hour.'),
+        ),
+        _Action(
+          Icons.volume_off_outlined,
+          'Mute $first for 1 day',
+          () => _moderate(() => _chat.mute(from, minutes: 24 * 60), done: '$first is muted for a day.'),
+        ),
+        _Action(
+          Icons.block_rounded,
+          'Ban $first from chat',
+          () => _moderate(() => _chat.mute(from), done: '$first can\'t send messages until you lift it.'),
+        ),
+        _Action(
+          Icons.volume_up_outlined,
+          'Lift $first\'s mute',
+          () => _moderate(() => _chat.mute(from, minutes: 0), done: '$first can write again.'),
+        ),
+      ],
+    ];
+  }
+
   Future<void> _send() async {
     final text = _text.text;
     if (_sending || chatText(text) == null) return;
@@ -253,11 +301,13 @@ class _ConversationState extends State<_Conversation> {
                 onPressed: () => chat.selected = null,
               ),
               Expanded(
-                child: Text(
-                  chatTitle(channel),
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: VerifiedName(
+                    chatTitle(channel),
+                    admin: channel?.person?.admin ?? false,
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
               if (!chat.connected && chat.running)
@@ -299,6 +349,7 @@ class _ConversationState extends State<_Conversation> {
                     final after = index < messages.length - 1 ? messages[index + 1] : null;
                     return _MessageBubble(
                       message: m,
+                      actions: _actions(m),
                       mine: m.from.id == me,
                       showName: (channel?.isPublic ?? true) && before?.from.id != m.from.id,
                       // Avatar and time on the last of a run from one person.
@@ -311,53 +362,75 @@ class _ConversationState extends State<_Conversation> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
             child: Text(_error!, style: theme.textTheme.bodySmall?.copyWith(color: scheme.error)),
+          )
+        else if (_note != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+            child: Text(_note!, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
           ),
         Divider(height: 1, color: scheme.outlineVariant.withValues(alpha: 0.5)),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              IconButton(
-                tooltip: _emoji ? 'Hide emoji' : 'Emoji',
-                isSelected: _emoji,
-                icon: const Icon(Icons.emoji_emotions_outlined, size: 22),
-                selectedIcon: const Icon(Icons.emoji_emotions_rounded, size: 22),
-                onPressed: () => setState(() => _emoji = !_emoji),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _text,
-                  focusNode: _focus,
-                  autofocus: true,
-                  minLines: 1,
-                  maxLines: 4,
-                  maxLength: maxChatChars,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    hintText: 'Message',
-                    isDense: true,
-                    counterText: '',
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        if (chat.mutedUntil case final until?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Row(
+              children: [
+                Icon(Icons.volume_off_rounded, size: 18, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    mutedNotice(until),
+                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                   ),
                 ),
-              ),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _text,
-                builder: (context, value, _) => IconButton(
-                  tooltip: 'Send',
-                  icon: _sending
-                      ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send_rounded, size: 20),
-                  color: scheme.primary,
-                  onPressed: _sending || chatText(value.text) == null ? null : () => unawaited(_send()),
+              ],
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                IconButton(
+                  tooltip: _emoji ? 'Hide emoji' : 'Emoji',
+                  isSelected: _emoji,
+                  icon: const Icon(Icons.emoji_emotions_outlined, size: 22),
+                  selectedIcon: const Icon(Icons.emoji_emotions_rounded, size: 22),
+                  onPressed: () => setState(() => _emoji = !_emoji),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: TextField(
+                    controller: _text,
+                    focusNode: _focus,
+                    autofocus: true,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: maxChatChars,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: 'Message',
+                      isDense: true,
+                      counterText: '',
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                    ),
+                  ),
+                ),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _text,
+                  builder: (context, value, _) => IconButton(
+                    tooltip: 'Send',
+                    icon: _sending
+                        ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.send_rounded, size: 20),
+                    color: scheme.primary,
+                    onPressed: _sending || chatText(value.text) == null ? null : () => unawaited(_send()),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        if (_emoji)
+        if (_emoji && chat.mutedUntil == null)
           EmojiPicker(
             textEditingController: _text,
             config: Config(
@@ -409,16 +482,77 @@ bool onlyEmoji(String text) {
   return t.isNotEmpty && t.characters.length <= 3 && _emojiOnly.hasMatch(t);
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, required this.mine, required this.showName, required this.lastOfRun});
+/// What the composer says instead while this user is muted until [until].
+String mutedNotice(int until) {
+  if (until >= chatMutedForever) return 'A chat admin turned off sending messages for you. You can still read.';
+  final t = DateTime.fromMillisecondsSinceEpoch(until * 1000);
+  final now = DateTime.now();
+  final today = t.year == now.year && t.month == now.month && t.day == now.day;
+  final when = today ? DateFormat.jm().format(t) : DateFormat.MMMd().add_jm().format(t);
+  return 'A chat admin muted you. You can write again at $when.';
+}
+
+/// Something this user may do to a message, from its menu.
+class _Action {
+  const _Action(this.icon, this.label, this.run);
+
+  final IconData icon;
+  final String label;
+  final VoidCallback run;
+}
+
+class _MessageBubble extends StatefulWidget {
+  const _MessageBubble({
+    required this.message,
+    required this.actions,
+    required this.mine,
+    required this.showName,
+    required this.lastOfRun,
+  });
 
   final ChatMessage message;
+  final List<_Action> actions;
   final bool mine;
   final bool showName;
   final bool lastOfRun;
 
   @override
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<_MessageBubble> {
+  bool _hover = false;
+  final _menu = MenuController();
+
+  /// The message's menu button, shown while the pointer is over it (or the
+  /// menu is open). A MenuAnchor needs only the bubble's own Overlay.
+  Widget _menuButton(ColorScheme scheme) => MenuAnchor(
+    controller: _menu,
+    onClose: () => setState(() {}),
+    menuChildren: [
+      for (final a in widget.actions)
+        MenuItemButton(leadingIcon: Icon(a.icon, size: 18), onPressed: a.run, child: Text(a.label)),
+    ],
+    builder: (context, controller, _) => AnimatedOpacity(
+      opacity: _hover || controller.isOpen ? 1 : 0,
+      duration: const Duration(milliseconds: 120),
+      child: IconButton(
+        tooltip: 'More',
+        visualDensity: VisualDensity.compact,
+        iconSize: 18,
+        color: scheme.onSurfaceVariant,
+        icon: const Icon(Icons.more_horiz_rounded),
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
+    ),
+  );
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final mine = widget.mine;
+    final showName = widget.showName;
+    final lastOfRun = widget.lastOfRun;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final big = onlyEmoji(message.text);
@@ -443,12 +577,14 @@ class _MessageBubble extends StatelessWidget {
             : theme.textTheme.bodyMedium?.copyWith(color: mine ? scheme.onPrimary : scheme.onSurface),
       ),
     );
-    return Padding(
+    final menu = widget.actions.isEmpty ? null : _menuButton(scheme);
+    final row = Padding(
       padding: EdgeInsets.only(top: showName ? 8 : 1, bottom: lastOfRun ? 6 : 1),
       child: Row(
         mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          if (mine && menu != null) menu,
           if (!mine)
             SizedBox(
               width: 34,
@@ -461,7 +597,11 @@ class _MessageBubble extends StatelessWidget {
                 if (showName && !mine)
                   Padding(
                     padding: const EdgeInsets.only(left: 4, bottom: 2),
-                    child: Text(from.name, style: theme.textTheme.labelSmall?.copyWith(color: scheme.primary)),
+                    child: VerifiedName(
+                      from.name,
+                      admin: from.admin,
+                      style: theme.textTheme.labelSmall?.copyWith(color: scheme.primary),
+                    ),
                   ),
                 ConstrainedBox(constraints: const BoxConstraints(maxWidth: 250), child: bubble),
                 if (lastOfRun)
@@ -475,8 +615,16 @@ class _MessageBubble extends StatelessWidget {
               ],
             ),
           ),
+          if (!mine && menu != null) menu,
         ],
       ),
+    );
+    if (menu == null) return row;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      // A long press opens the menu on touch screens.
+      child: GestureDetector(onLongPress: _menu.open, child: row),
     );
   }
 }

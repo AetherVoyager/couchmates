@@ -59,6 +59,23 @@ pub struct User {
     /// Set when the user has a profile picture.
     #[serde(default)]
     pub photo_version: Option<i64>,
+    /// 1 for a chat admin (verified badge, may moderate the chat).
+    #[serde(default)]
+    pub chat_admin: i64,
+    /// Can't send chat messages until then (Unix seconds).
+    #[serde(default)]
+    pub chat_muted_until: Option<i64>,
+}
+
+impl User {
+    pub fn is_chat_admin(&self) -> bool {
+        self.chat_admin != 0
+    }
+
+    /// When this user's chat mute ends, if they're muted at [now].
+    pub fn muted_until(&self, now: i64) -> Option<i64> {
+        self.chat_muted_until.filter(|until| *until > now)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,6 +114,8 @@ pub struct PresenceRow {
     pub ip: Option<String>,
     #[serde(default)]
     pub device_name: Option<String>,
+    #[serde(default)]
+    pub chat_admin: i64,
 }
 
 /// A public Stremio add-on from the Add-ons page, with its URL opened.
@@ -143,9 +162,14 @@ pub struct ChatRow {
     pub id: i64,
     pub channel: String,
     pub sender: String,
+    /// The other person of a private chat.
+    #[serde(default)]
+    pub recipient: Option<String>,
     pub from_name: String,
     #[serde(default)]
     pub from_photo: Option<i64>,
+    #[serde(default)]
+    pub from_admin: i64,
     pub text: String,
     pub sent_at: i64,
 }
@@ -157,9 +181,13 @@ pub struct ChatChannelRow {
     pub id: i64,
     pub channel: String,
     pub sender: String,
+    #[serde(default)]
+    pub recipient: Option<String>,
     pub from_name: String,
     #[serde(default)]
     pub from_photo: Option<i64>,
+    #[serde(default)]
+    pub from_admin: i64,
     pub text: String,
     pub sent_at: i64,
     #[serde(default)]
@@ -168,6 +196,8 @@ pub struct ChatChannelRow {
     pub other_name: Option<String>,
     #[serde(default)]
     pub other_photo: Option<i64>,
+    #[serde(default)]
+    pub other_admin: i64,
     pub unread: i64,
 }
 
@@ -178,8 +208,10 @@ impl ChatChannelRow {
             id: self.id,
             channel: self.channel.clone(),
             sender: self.sender.clone(),
+            recipient: self.recipient.clone(),
             from_name: self.from_name.clone(),
             from_photo: self.from_photo,
+            from_admin: self.from_admin,
             text: self.text.clone(),
             sent_at: self.sent_at,
         }
@@ -187,8 +219,8 @@ impl ChatChannelRow {
 }
 
 /// The columns of a [ChatRow], from `chat_messages m`.
-const CHAT_SELECT: &str = "SELECT m.id, m.channel, m.sender, COALESCE(us.name, 'Someone') AS from_name, \
-     ps.version AS from_photo, m.text, m.sent_at FROM chat_messages m LEFT JOIN users us ON us.id = m.sender \
+const CHAT_SELECT: &str = "SELECT m.id, m.channel, m.sender, m.recipient, COALESCE(us.name, 'Someone') AS from_name, \
+     ps.version AS from_photo, COALESCE(us.chat_admin, 0) AS from_admin, m.text, m.sent_at FROM chat_messages m LEFT JOIN users us ON us.id = m.sender \
      LEFT JOIN photos ps ON ps.user_id = m.sender";
 
 /// Unread messages in `m.channel` for user ?1, counted up to 100.
@@ -480,6 +512,16 @@ impl Store {
             &[s(id), s(name), s(username), n(daily_gb), n(monthly_gb)],
         )
         .await
+    }
+
+    pub async fn set_chat_admin(&self, id: &str, admin: bool) -> Result<()> {
+        self.run("UPDATE users SET chat_admin = ?2 WHERE id = ?1", &[s(id), n(if admin { 1.0 } else { 0.0 })]).await
+    }
+
+    /// Mutes [id] in chat until [until] (Unix seconds), or lifts it.
+    pub async fn set_chat_muted(&self, id: &str, until: Option<i64>) -> Result<()> {
+        let until = until.map(|u| n(u as f64)).unwrap_or(JsValue::NULL);
+        self.run("UPDATE users SET chat_muted_until = ?2 WHERE id = ?1", &[s(id), until]).await
     }
 
     pub async fn set_user_disabled(&self, id: &str, disabled: bool) -> Result<()> {
@@ -849,7 +891,7 @@ impl Store {
     pub async fn presence_rows(&self) -> Result<Vec<PresenceRow>> {
         self.all(
             "SELECT p.device_id, p.user_id, u.name, p.seen_at, p.watching, p.watching_since, p.ip, \
-             d.name AS device_name, ph.version AS photo_version FROM presence p JOIN users u ON u.id = p.user_id \
+             d.name AS device_name, ph.version AS photo_version, u.chat_admin FROM presence p JOIN users u ON u.id = p.user_id \
              LEFT JOIN devices d ON d.id = p.device_id \
              LEFT JOIN photos ph ON ph.user_id = p.user_id WHERE u.disabled = 0",
             &[],
@@ -950,6 +992,30 @@ impl Store {
             .ok_or_else(|| worker::Error::RustError("the message wasn't saved".into()))
     }
 
+    pub async fn chat_message(&self, id: i64) -> Result<Option<ChatRow>> {
+        self.first(&format!("{CHAT_SELECT} WHERE m.id = ?1"), &[n(id as f64)]).await
+    }
+
+    /// Deletes message [id] for good.
+    pub async fn delete_chat(&self, id: i64) -> Result<()> {
+        self.run("DELETE FROM chat_messages WHERE id = ?1", &[n(id as f64)]).await
+    }
+
+    /// How many messages [sender] sent since [since] (Unix seconds).
+    pub async fn chat_sent_since(&self, sender: &str, since: i64) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Count {
+            n: i64,
+        }
+        let row: Option<Count> = self
+            .first(
+                "SELECT COUNT(*) AS n FROM chat_messages WHERE sender = ?1 AND sent_at >= ?2",
+                &[s(sender), n(since as f64)],
+            )
+            .await?;
+        Ok(row.map_or(0, |r| r.n))
+    }
+
     /// Up to [limit] messages of [channel], oldest first: the latest, those
     /// before [before], or those after [after]. Asks for one more than
     /// [limit], so a longer answer means there are more.
@@ -1008,7 +1074,8 @@ impl Store {
         let direct = self
             .all(
                 &format!(
-                    "SELECT x.*, uo.id AS other_id, uo.name AS other_name, po.version AS other_photo, {CHAT_UNREAD} \
+                    "SELECT x.*, uo.id AS other_id, uo.name AS other_name, po.version AS other_photo, \
+                     uo.chat_admin AS other_admin, {CHAT_UNREAD} \
                      FROM ({CHAT_SELECT} WHERE m.id IN (SELECT MAX(id) FROM chat_messages WHERE channel != 'public' \
                      AND (sender = ?1 OR recipient = ?1) GROUP BY channel)) x JOIN chat_messages m ON m.id = x.id \
                      JOIN users uo ON uo.id = CASE WHEN m.sender = ?1 THEN m.recipient ELSE m.sender END \

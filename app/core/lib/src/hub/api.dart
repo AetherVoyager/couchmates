@@ -33,6 +33,8 @@ abstract final class HubPaths {
   static const chatSend = '/api/app/chat/send';
   static const chatRead = '/api/app/chat/read';
   static const chatLive = '/api/app/chat/live';
+  static const chatDelete = '/api/app/chat/delete';
+  static const chatMute = '/api/app/chat/mute';
   static const requests = '/api/app/requests';
   static const requestsCancel = '/api/app/requests/cancel';
   static const requestsEpisodes = '/api/app/requests/episodes';
@@ -735,7 +737,7 @@ class PresenceUpdate {
 
 /// Another user, as everyone sees them.
 class Person {
-  const Person({required this.id, required this.name, this.photo});
+  const Person({required this.id, required this.name, this.photo, this.admin = false});
 
   final String id;
   final String name;
@@ -743,10 +745,17 @@ class Person {
   /// The profile picture's path under the Hub, fetched with the device token.
   final String? photo;
 
-  factory Person.fromJson(Json j) =>
-      Person(id: j['id'] as String, name: j['name'] as String, photo: j['photo'] as String?);
+  /// A chat admin: shown with a verified badge, and can moderate the chat.
+  final bool admin;
 
-  Json toJson() => {'id': id, 'name': name, 'photo': ?photo};
+  factory Person.fromJson(Json j) => Person(
+    id: j['id'] as String,
+    name: j['name'] as String,
+    photo: j['photo'] as String?,
+    admin: j['admin'] as bool? ?? false,
+  );
+
+  Json toJson() => {'id': id, 'name': name, 'photo': ?photo, if (admin) 'admin': true};
 }
 
 /// A new profile picture, base64. The app crops and shrinks it first.
@@ -1000,15 +1009,28 @@ class ChatChannel {
 
 /// The public channel first, then private chats, latest message first.
 class ChatOverview {
-  const ChatOverview({required this.channels});
+  const ChatOverview({required this.channels, this.admin = false, this.mutedUntil});
 
   final List<ChatChannel> channels;
 
-  factory ChatOverview.fromJson(Json j) =>
-      ChatOverview(channels: [for (final c in j['channels'] as List) ChatChannel.fromJson(c as Json)]);
+  /// This user is a chat admin: they may delete anyone's public messages and
+  /// mute people.
+  final bool admin;
+
+  /// This user can't send messages until then (Unix seconds);
+  /// [chatMutedForever] means until an admin lifts it.
+  final int? mutedUntil;
+
+  factory ChatOverview.fromJson(Json j) => ChatOverview(
+    channels: [for (final c in j['channels'] as List) ChatChannel.fromJson(c as Json)],
+    admin: j['admin'] as bool? ?? false,
+    mutedUntil: (j['muted_until'] as num?)?.toInt(),
+  );
 
   Json toJson() => {
     'channels': [for (final c in channels) c.toJson()],
+    if (admin) 'admin': true,
+    'muted_until': ?mutedUntil,
   };
 }
 
@@ -1056,7 +1078,33 @@ class ChatRead {
   Json toJson() => {'channel': channel, 'up_to': upTo};
 }
 
-/// A frame on the live chat socket. Kinds other than `message` are ignored.
+/// Deletes message [id]: your own, or (for a chat admin) any public one.
+class ChatDelete {
+  const ChatDelete({required this.id});
+
+  final int id;
+
+  factory ChatDelete.fromJson(Json j) => ChatDelete(id: (j['id'] as num).toInt());
+
+  Json toJson() => {'id': id};
+}
+
+/// A chat admin stops [user] sending messages for [minutes]: `0` lifts a
+/// mute, null mutes until lifted.
+class ChatMute {
+  const ChatMute({required this.user, this.minutes});
+
+  final String user;
+  final int? minutes;
+
+  factory ChatMute.fromJson(Json j) => ChatMute(user: j['user'] as String, minutes: (j['minutes'] as num?)?.toInt());
+
+  Json toJson() => {'user': user, 'minutes': ?minutes};
+}
+
+/// A frame on the live chat socket: `message` (a new one), `deleted` (drop
+/// that message) or `refresh` (this user's chat standing changed: fetch the
+/// overview again). Other kinds are ignored.
 class ChatEvent {
   const ChatEvent({required this.kind, this.message});
 

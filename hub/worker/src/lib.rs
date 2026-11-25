@@ -65,6 +65,8 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             (Method::Get, "chat/messages") => chat::messages(req, &store).await,
             (Method::Post, "chat/send") => chat::send(req, &store, env).await,
             (Method::Post, "chat/read") => chat::read(req, &store).await,
+            (Method::Post, "chat/delete") => chat::delete(req, &store, env).await,
+            (Method::Post, "chat/mute") => chat::mute(req, &store, env).await,
             (Method::Get, "chat/live") => chat::live(req, &store, env).await,
             (Method::Get, "requests") => requests::list(req, &store).await,
             (Method::Post, "requests") => requests::create(req, &store).await,
@@ -124,11 +126,11 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         }
         (Method::Post, ["users", id, "devices", device, "delete"]) => {
             let (id, device) = (id.to_string(), device.to_string());
-            admin::user_action(req, &store, &id, "device-delete", Some(&device)).await
+            admin::user_action(req, &store, env, &id, "device-delete", Some(&device)).await
         }
         (Method::Post, ["users", id, action]) => {
             let (id, action) = (id.to_string(), action.to_string());
-            admin::user_action(req, &store, &id, &action, None).await
+            admin::user_action(req, &store, env, &id, &action, None).await
         }
         (Method::Get, ["addons"]) => admin::addons_page(&req, &store, None).await,
         (Method::Post, ["addons"]) => admin::add_addon(req, &store).await,
@@ -154,6 +156,7 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         (Method::Post, ["settings", "updates"]) => admin::save_updates(req, &store).await,
         (Method::Post, ["settings", "trackers"]) => admin::save_trackers(req, &store).await,
         (Method::Post, ["settings", "tmdb"]) => admin::save_tmdb(req, &store).await,
+        (Method::Post, ["settings", "chat"]) => admin::save_chat(req, &store).await,
         (Method::Post, ["settings", "tracearr", action]) => {
             let action = action.to_string();
             admin::tracearr_action(&req, &store, &action).await

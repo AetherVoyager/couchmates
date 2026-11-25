@@ -105,15 +105,15 @@ fn playing(user_id: &str, rows: &[PresenceRow], now: i64) -> Option<(NowWatching
 
 /// What everyone but [me] is up to, and [me]'s join requests.
 pub fn activity(me: &str, rows: &[PresenceRow], requests: &[JoinRow], now: i64) -> Activity {
-    let mut people: HashMap<&str, (&str, i64, Option<i64>)> = HashMap::new();
+    let mut people: HashMap<&str, (&str, i64, Option<i64>, bool)> = HashMap::new();
     for r in rows.iter().filter(|r| r.user_id != me) {
-        let entry = people.entry(&r.user_id).or_insert((&r.name, r.seen_at, r.photo_version));
+        let entry = people.entry(&r.user_id).or_insert((&r.name, r.seen_at, r.photo_version, r.chat_admin != 0));
         entry.1 = entry.1.max(r.seen_at);
     }
     let mut friends: Vec<FriendActivity> = people
         .into_iter()
-        .map(|(id, (name, last_seen, photo))| FriendActivity {
-            person: Person { id: id.into(), name: name.into(), photo: photo_path(id, photo) },
+        .map(|(id, (name, last_seen, photo, admin))| FriendActivity {
+            person: Person { id: id.into(), name: name.into(), photo: photo_path(id, photo), admin },
             online: last_seen >= now - ONLINE_SECS,
             last_seen,
             watching: playing(id, rows, now).map(|(w, since)| FriendWatching {
@@ -149,9 +149,15 @@ pub fn activity(me: &str, rows: &[PresenceRow], requests: &[JoinRow], now: i64) 
                         id: r.from_user.clone(),
                         name: r.from_name.clone(),
                         photo: photo_path(&r.from_user, r.from_photo),
+                        admin: false,
                     }
                 } else {
-                    Person { id: r.to_user.clone(), name: r.to_name.clone(), photo: photo_path(&r.to_user, r.to_photo) }
+                    Person {
+                        id: r.to_user.clone(),
+                        name: r.to_name.clone(),
+                        photo: photo_path(&r.to_user, r.to_photo),
+                        admin: false,
+                    }
                 },
                 title: r.title.clone(),
                 status: r.status.clone(),
@@ -234,6 +240,7 @@ pub async fn presence(mut req: Request, store: &Store) -> Result<Response> {
             photo_version: user.photo_version,
             ip: Some(ip),
             device_name: Some(device.name.clone()),
+            chat_admin: user.chat_admin,
         };
         match stored {
             Some(i) => rows[i] = row,
@@ -337,6 +344,7 @@ mod tests {
             photo_version: (user == "bob").then_some(7),
             ip: None,
             device_name: None,
+            chat_admin: 0,
         }
     }
 

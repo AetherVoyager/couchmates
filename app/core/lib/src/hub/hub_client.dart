@@ -242,6 +242,19 @@ class HubClient {
     );
   }
 
+  Future<void> deleteChat(int id) async {
+    await _send('POST', HubPaths.chatDelete, body: ChatDelete(id: id).toJson());
+  }
+
+  /// Mutes [user] for [minutes] (null: until lifted, 0: lifts it). Chat admins only.
+  Future<void> muteChat(String user, {int? minutes}) async {
+    await _send(
+      'POST',
+      HubPaths.chatMute,
+      body: ChatMute(user: user, minutes: minutes).toJson(),
+    );
+  }
+
   /// The live chat socket's address (`ws:` or `wss:`); open it with
   /// [authHeaders].
   Uri get chatLiveUrl {

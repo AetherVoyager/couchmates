@@ -70,6 +70,17 @@ On a user's page:
   titles not public, a wrong server address, or a rejected token.
 - **Access:** disable (stops playback now) or enable; delete.
 
+### Chat moderation
+
+On a user's page, **Chat → Make chat admin** gives them a blue verified tick next to their name. In the app's chat,
+admins can hover a message (or long-press it) and pick **Delete message**, **Mute for 1 hour / 1 day**, **Ban from
+chat** (until lifted) or **Lift mute**. Admins can delete anyone's message in the Everyone chat, but only their own in
+private chats. Everyone can delete their own messages. You can also mute or unmute someone on their page; the users
+list marks who is muted. Admins can't be muted.
+
+For everyone but admins, the Hub allows at most 5 messages in 10 seconds. **Settings → Chat → Blocked words** stars
+out whole words (any case) as messages are sent; older messages stay as they were.
+
 ## Add-ons
 
 **Add-ons** adds public Stremio add-ons to the app, after your Telegram-Stremio catalog. Paste an add-on's

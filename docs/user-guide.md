@@ -63,6 +63,12 @@ quieter while people talk, and decide whether to join muted.
   sounds like a phone call. Either stay muted when you're not talking, or keep the headset for listening and pick
   another microphone in Settings → Voice chat. Newer LE Audio headsets on Windows 11 don't have this problem.
 
+## Chat
+
+The chat tab in the friends bubble has the Everyone chat and private chats. A blue tick next to a name means a chat
+admin, who can remove messages and mute people. To delete one of your own messages, hover it (or long-press) and
+pick **Delete message**. If an admin mutes you, the composer says until when; you can still read.
+
 ## Your profile
 
 Your avatar (top right) opens **Profile**: change the name others see, see every device you're signed in on and

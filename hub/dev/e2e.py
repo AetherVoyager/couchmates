@@ -374,6 +374,53 @@ s, _, _ = call(anon, "/api/app/chat/send", data={"channel": "public", "text": " 
 check("empty messages are refused", s == 400)
 s, _, _ = call(anon, "/api/app/chat/send", data={"channel": "dm:" + alice_id, "text": "me"}, headers=auth)
 check("no private chat with yourself", s == 404)
+
+# --- Chat moderation: admins (set on the dashboard) delete and mute; a rate limit and blocked words for everyone
+def send_chat(who, text, channel="public"):
+    s, _, body = call(anon, "/api/app/chat/send", data={"channel": channel, "text": text}, headers=who)
+    return s, (json.loads(body) if s == 200 else {})
+s, spam = send_chat(bob, "buy my stuff")
+check("bob writes in public", s == 200 and not spam["from"].get("admin"))
+s, _, _ = call(anon, "/api/app/chat/delete", data={"id": spam.get("id", 0)}, headers=auth)
+check("someone else's message can't be deleted", s == 403)
+s, _, _ = call(anon, "/api/app/chat/mute", data={"user": alice_id, "minutes": 5}, headers=bob)
+check("only chat admins mute", s == 403)
+s, _, _ = call(b, f"/users/{alice_id}/chat-admin", form={})
+check("the dashboard makes alice a chat admin", s == 303)
+check("her page shows it", "Remove chat admin" in call(b, f"/users/{alice_id}")[2])
+view = json.loads(call(anon, "/api/app/chat", headers=auth)[2])
+check("alice's chat says she's an admin", view.get("admin") is True and "muted_until" not in view, view)
+s, mine = send_chat(auth, "be nice 🙂")
+check("her messages carry the badge", s == 200 and mine["from"].get("admin") is True, mine)
+s, _, _ = call(anon, "/api/app/chat/delete", data={"id": spam.get("id", 0)}, headers=auth)
+frames = [ws_read(live) for _ in range(4)] if live else []
+kinds = [(json.loads(f)["kind"], json.loads(f).get("message", {}).get("id")) for f in frames if f and f != "pong"]
+check("an admin deletes it, and the apps hear", s == 200 and ("deleted", spam.get("id")) in kinds, kinds)
+s, _, body = call(anon, f"/api/app/chat/messages?channel=public&after={pub_msg.get('id', 0)}", headers=bob)
+check("it's gone for good", s == 200 and spam.get("id") not in [m["id"] for m in json.loads(body)["messages"]], body)
+s, _, _ = call(anon, "/api/app/chat/mute", data={"user": bob_id, "minutes": 60}, headers=auth)
+s2, _ = send_chat(bob, "hello?")
+view = json.loads(call(anon, "/api/app/chat", headers=bob)[2])
+check("a muted bob can't write, and knows until when", s == 200 and s2 == 403
+      and view.get("muted_until", 0) > time.time() + 3000, view)
+s, _, _ = call(anon, "/api/app/chat/mute", data={"user": alice_id}, headers=auth)
+check("nobody mutes themselves", s == 400)
+check("the users list shows the mute", "Muted in chat" in call(b, "/users")[2])
+s, _, _ = call(b, f"/users/{bob_id}/chat-unmute", form={})
+s2, back = send_chat(bob, "sorry")
+check("lifting the mute on the dashboard lets him write", s == 303 and s2 == 200)
+s, _, _ = call(b, "/settings/chat", form={"words": "Heck, darn"})
+s2, masked = send_chat(bob, "what the HECK, so darned")
+check("blocked words are starred out", s == 303 and masked.get("text") == "what the ****, so darned", masked)
+got = [send_chat(bob, f"flood {i}")[0] for i in range(6)]
+check("sending too fast is slowed down", 429 in got and got[0] == 200, got)
+got = [send_chat(auth, f"admin {i}")[0] for i in range(6)]
+check("chat admins aren't", got == [200] * 6, got)
+s, _, _ = call(anon, "/api/app/chat/delete", data={"id": back.get("id", 0)}, headers=bob)
+check("anyone deletes their own message", s == 200)
+call(b, "/settings/chat", form={"words": ""})
+call(b, f"/users/{alice_id}/chat-unadmin", form={})
+check("alice is an ordinary user again", "admin" not in json.loads(call(anon, "/api/app/chat", headers=auth)[2]))
 if live:
     live.close()
 

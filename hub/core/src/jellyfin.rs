@@ -492,6 +492,7 @@ mod tests {
             photo_version: None,
             ip: Some("203.0.113.9".into()),
             device_name: Some("Living room PC".into()),
+            chat_admin: 0,
         }
     }
 

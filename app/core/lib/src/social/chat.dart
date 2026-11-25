@@ -62,6 +62,13 @@ class ChatThread {
     messages.sort((a, b) => a.id.compareTo(b.id));
     return true;
   }
+
+  /// Drops message [id]; false when it wasn't here.
+  bool remove(int id) {
+    final before = messages.length;
+    messages.removeWhere((m) => m.id == id);
+    return messages.length != before;
+  }
 }
 
 /// The Hub's chat: the public channel and private chats, kept for good on
@@ -88,6 +95,18 @@ class Chat extends ChangeNotifier {
   bool _loaded = false;
   bool _connected = false;
   String? _viewing;
+  bool _admin = false;
+  int? _mutedUntil;
+
+  /// This user is a chat admin: may delete anyone's public messages and mute people.
+  bool get admin => _admin;
+
+  /// This user can't send until then (Unix seconds); [chatMutedForever]
+  /// means until an admin lifts it. Null when they can write.
+  int? get mutedUntil {
+    final until = _mutedUntil;
+    return until != null && until * 1000 > DateTime.now().millisecondsSinceEpoch ? until : null;
+  }
 
   /// The public channel first, then private chats, latest first.
   List<ChatChannel> get channels => _channels;
@@ -229,7 +248,14 @@ class Chat extends ChangeNotifier {
     if (frame == 'pong') return;
     try {
       final event = ChatEvent.fromJson(jsonDecode(frame) as Json);
-      if (event.kind == 'message' && event.message != null) receive(event.message!);
+      switch (event.kind) {
+        case 'message' when event.message != null:
+          receive(event.message!);
+        case 'deleted' when event.message != null:
+          removed(event.message!);
+        case 'refresh':
+          unawaited(refresh());
+      }
     } catch (_) {
       // A frame this version doesn't understand.
     }
@@ -248,6 +274,8 @@ class Chat extends ChangeNotifier {
       // Keep private chats started here that have no messages yet.
       final started = _channels.where((c) => !listed.contains(c.id) && c.last == null && !c.isPublic);
       _channels = [for (final c in overview.channels) c.id == _viewing ? c.copyWith(unread: 0) : c, ...started];
+      _admin = overview.admin;
+      _mutedUntil = overview.mutedUntil;
       _loaded = true;
       notifyListeners();
       if (_viewing != null) _markRead(_viewing!);
@@ -310,9 +338,45 @@ class Chat extends ChangeNotifier {
     if (hub == null) throw const HubException('Sign in first.');
     final clean = chatText(text);
     if (clean == null) throw const HubException('Write something first (at most 2000 characters).');
-    final message = await hub.sendChat(id, clean);
+    final ChatMessage message;
+    try {
+      message = await hub.sendChat(id, clean);
+    } on HubException catch (e) {
+      // Muted: learn until when, so the composer can say so.
+      if (e.status == 403) unawaited(refresh());
+      rethrow;
+    }
     receive(message);
     return message;
+  }
+
+  /// Whether this user may delete [m]: their own, or any public one for an admin.
+  bool canDelete(ChatMessage m) => m.from.id == _me() || (_admin && m.channel == publicChannel);
+
+  /// Whether this user may mute [person]: an admin, and not another admin or themselves.
+  bool canMute(Person person) => _admin && !person.admin && person.id != _me();
+
+  /// Deletes [m] on the Hub. Throws [HubException].
+  Future<void> delete(ChatMessage m) async {
+    final hub = _hub();
+    if (hub == null) throw const HubException('Sign in first.');
+    await hub.deleteChat(m.id);
+    removed(m);
+  }
+
+  /// Mutes [person] for [minutes] (null: until lifted, 0: lifts it). Throws [HubException].
+  Future<void> mute(Person person, {int? minutes}) async {
+    final hub = _hub();
+    if (hub == null) throw const HubException('Sign in first.');
+    await hub.muteChat(person.id, minutes: minutes);
+  }
+
+  /// Takes out a deleted message, wherever it shows.
+  void removed(ChatMessage m) {
+    _threads[m.channel]?.remove(m.id);
+    // The list shows the latest message; the Hub knows the one before it.
+    if (channel(m.channel)?.last?.id == m.id) unawaited(refresh());
+    notifyListeners();
   }
 
   /// Takes in a message from the socket or from sending one. Each counts once.
@@ -378,6 +442,8 @@ class Chat extends ChangeNotifier {
     _seen.clear();
     _loaded = false;
     _viewing = null;
+    _admin = false;
+    _mutedUntil = null;
     notifyListeners();
   }
 

@@ -1,0 +1,10 @@
+{
+  "kind": "deleted",
+  "message": {
+    "id": 122,
+    "channel": "public",
+    "from": { "id": "5555666677778888", "name": "Carol" },
+    "text": "👍",
+    "sent_at": 1795280060
+  }
+}

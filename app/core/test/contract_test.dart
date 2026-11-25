@@ -57,6 +57,11 @@ void main() {
     roundTrips('chat_message.json', (j) => ChatMessage.fromJson(j).toJson());
     roundTrips('chat_read.json', (j) => ChatRead.fromJson(j).toJson());
     roundTrips('chat_event.json', (j) => ChatEvent.fromJson(j).toJson());
+    roundTrips('chat_event_deleted.json', (j) => ChatEvent.fromJson(j).toJson());
+    roundTrips('chat_overview_moderator.json', (j) => ChatOverview.fromJson(j).toJson());
+    roundTrips('chat_delete.json', (j) => ChatDelete.fromJson(j).toJson());
+    roundTrips('chat_mute.json', (j) => ChatMute.fromJson(j).toJson());
+    roundTrips('chat_mute_forever.json', (j) => ChatMute.fromJson(j).toJson());
     roundTrips('media_requests.json', (j) => MediaRequests.fromJson(j).toJson());
     roundTrips('media_request.json', (j) => MediaRequest.fromJson(j).toJson());
     roundTrips('media_request_create.json', (j) => MediaRequestCreate.fromJson(j).toJson());

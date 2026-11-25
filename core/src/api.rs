@@ -33,6 +33,8 @@
 //! | `GET /api/app/chat/messages?channel=public&before=120&after=80` | | [`ChatMessages`] |
 //! | `POST /api/app/chat/send` | [`ChatSend`] | [`ChatMessage`] |
 //! | `POST /api/app/chat/read` | [`ChatRead`] | [`OkResponse`] |
+//! | `POST /api/app/chat/delete` | [`ChatDelete`] | [`OkResponse`] |
+//! | `POST /api/app/chat/mute` | [`ChatMute`] | [`OkResponse`] |
 //! | `GET /api/app/chat/live` (WebSocket) | | a stream of [`ChatEvent`] text frames |
 //! | `GET /api/app/requests` | | [`MediaRequests`] |
 //! | `POST /api/app/requests` | [`MediaRequestCreate`] | [`MediaRequest`] |
@@ -71,6 +73,8 @@ pub mod paths {
     pub const CHAT_SEND: &str = "/api/app/chat/send";
     pub const CHAT_READ: &str = "/api/app/chat/read";
     pub const CHAT_LIVE: &str = "/api/app/chat/live";
+    pub const CHAT_DELETE: &str = "/api/app/chat/delete";
+    pub const CHAT_MUTE: &str = "/api/app/chat/mute";
     pub const REQUESTS: &str = "/api/app/requests";
     pub const REQUESTS_CANCEL: &str = "/api/app/requests/cancel";
     pub const REQUESTS_EPISODES: &str = "/api/app/requests/episodes";
@@ -410,6 +414,9 @@ pub struct Person {
     /// The version changes with the picture, so it can be cached for good.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub photo: Option<String>,
+    /// A chat admin: shown with a verified badge, and can moderate the chat.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub admin: bool,
 }
 
 /// Everyone else on the Hub, and the join requests to or from this user.
@@ -560,6 +567,16 @@ pub struct ChatChannel {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatOverview {
     pub channels: Vec<ChatChannel>,
+    /// This user is a chat admin: they may delete anyone's public messages
+    /// and mute people (see [`ChatDelete`], [`ChatMute`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub admin: bool,
+    /// This user can't send messages until then (Unix seconds). A mute
+    /// that lasts until an admin lifts it is [`rules::CHAT_MUTED_FOREVER`].
+    ///
+    /// [`rules::CHAT_MUTED_FOREVER`]: crate::rules::CHAT_MUTED_FOREVER
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub muted_until: Option<i64>,
 }
 
 /// A page of one channel, oldest first. Without `before` or `after` it's the
@@ -586,8 +603,30 @@ pub struct ChatRead {
     pub up_to: i64,
 }
 
-/// A frame on the live chat socket. `kind` is `message` for now; apps ignore
-/// kinds they don't know. A `ping` text frame is answered with `pong`.
+/// Deletes message [id]. Anyone may delete their own messages; a chat admin
+/// may delete any message on the public channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatDelete {
+    pub id: i64,
+}
+
+/// A chat admin stops [user] sending messages anywhere in chat for
+/// [minutes]. `0` lifts a mute; leaving it out mutes until lifted (a ban).
+/// Other admins can't be muted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChatMute {
+    pub user: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minutes: Option<u32>,
+}
+
+/// A frame on the live chat socket. Apps ignore kinds they don't know:
+/// - `message`: a new [message](ChatEvent::message).
+/// - `deleted`: [message](ChatEvent::message) was deleted; drop it.
+/// - `refresh`: this user's chat standing changed (muted, made an admin):
+///   fetch the overview again.
+///
+/// A `ping` text frame is answered with `pong`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatEvent {
     pub kind: String,
@@ -813,6 +852,11 @@ mod tests {
         round_trips::<ChatMessage>(include_str!("../contract/chat_message.json"));
         round_trips::<ChatRead>(include_str!("../contract/chat_read.json"));
         round_trips::<ChatEvent>(include_str!("../contract/chat_event.json"));
+        round_trips::<ChatEvent>(include_str!("../contract/chat_event_deleted.json"));
+        round_trips::<ChatOverview>(include_str!("../contract/chat_overview_moderator.json"));
+        round_trips::<ChatDelete>(include_str!("../contract/chat_delete.json"));
+        round_trips::<ChatMute>(include_str!("../contract/chat_mute.json"));
+        round_trips::<ChatMute>(include_str!("../contract/chat_mute_forever.json"));
         round_trips::<MediaRequests>(include_str!("../contract/media_requests.json"));
         round_trips::<MediaRequest>(include_str!("../contract/media_request.json"));
         round_trips::<MediaRequestCreate>(include_str!("../contract/media_request_create.json"));

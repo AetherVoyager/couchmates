@@ -24,6 +24,8 @@ pub struct Settings<'a> {
     pub tracearr_has_key: bool,
     /// A Tracearr key just made, shown this once.
     pub tracearr_new_key: Option<&'a str>,
+    /// The chat's blocked words, as typed.
+    pub chat_blocked_words: Option<&'a str>,
     pub hub: &'a str,
 }
 
@@ -136,6 +138,19 @@ pub fn page(s: &Settings, flash: Option<&Flash>) -> Markup {
                         button.secondary type="submit" { "Turn off" }
                     }
                 }
+            }
+        }
+        div.card {
+            h2 { "Chat" }
+            p.muted {
+                "Words to star out in chat messages, one per line or separated by commas. They match whole words "
+                "in any case, so blocking \"ass\" leaves \"class\" alone. Chat admins are set on each user's page; "
+                "everyone else can send at most 5 messages in 10 seconds."
+            }
+            form method="post" action="/settings/chat" {
+                label for="chat_words" { "Blocked words" }
+                textarea #chat_words name="words" rows="4" spellcheck="false" { (s.chat_blocked_words.unwrap_or("")) }
+                div.row { button type="submit" { "Save" } }
             }
         }
         div.card {

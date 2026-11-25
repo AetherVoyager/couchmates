@@ -1,6 +1,7 @@
 //! The users list and a single user's page.
 
 use couchmates_hub_core::catalog_check::{CatalogCheck, Rows};
+use couchmates_hub_core::chat::CHAT_MUTED_FOREVER;
 use couchmates_hub_core::store::{Device, User};
 use maud::{Markup, html};
 
@@ -24,6 +25,67 @@ fn user_form(user: Option<&User>) -> Markup {
     }
 }
 
+/// The chat admin's verified badge.
+fn verified() -> Markup {
+    html! { span title="Chat admin" style="color:#1d9bf0" { "✔" } }
+}
+
+/// How long a chat mute ending at [until] has left.
+fn mute_left(until: i64, now: i64) -> String {
+    if until >= CHAT_MUTED_FOREVER {
+        return "until you lift it".into();
+    }
+    let minutes = (until - now + 59) / 60;
+    match minutes {
+        ..=119 => format!("for another {minutes} min"),
+        120..=2879 => format!("for another {} h", (minutes + 59) / 60),
+        _ => format!("for another {} days", (minutes + 1439) / 1440),
+    }
+}
+
+fn chat_card(user: &User, base: &str, now: i64) -> Markup {
+    html! {
+        div.card {
+            h2 { "Chat" }
+            div.row {
+                @if user.is_chat_admin() {
+                    span.pill.ok { "Chat admin " (verified()) }
+                    form.inline method="post" action=(format!("{base}/chat-unadmin")) {
+                        button.secondary type="submit" { "Remove chat admin" }
+                    }
+                } @else {
+                    form.inline method="post" action=(format!("{base}/chat-admin")) {
+                        button.secondary type="submit" { "Make chat admin" }
+                    }
+                }
+            }
+            p.muted {
+                "Chat admins have a verified badge next to their name. In the app they can delete anyone's message "
+                "in the Everyone chat and mute people. They're never muted or slowed down."
+            }
+            @if !user.is_chat_admin() {
+                @if let Some(until) = user.muted_until(now) {
+                    p { span.pill.warn { "Muted" } " " (mute_left(until, now)) ". They can read but not send messages." }
+                    form.inline method="post" action=(format!("{base}/chat-unmute")) {
+                        button type="submit" { "Lift the mute" }
+                    }
+                } @else {
+                    form method="post" action=(format!("{base}/chat-mute")) {
+                        label for="mute_minutes" { "Stop them sending chat messages" }
+                        select #mute_minutes name="minutes" {
+                            option value="60" { "For 1 hour" }
+                            option value="1440" { "For 1 day" }
+                            option value="10080" { "For 1 week" }
+                            option value="forever" { "Until I lift it" }
+                        }
+                        div.row { button.secondary type="submit" { "Mute" } }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn list(users: &[User], now: i64, flash: Option<&Flash>) -> Markup {
     let body = html! {
         h1 { "Users" }
@@ -43,10 +105,13 @@ pub fn list(users: &[User], now: i64, flash: Option<&Flash>) -> Markup {
                     tr { th { "Name" } th { "Username" } th { "Limits" } th { "Status" } th { "Added" } }
                     @for u in users {
                         tr {
-                            td { a href=(format!("/users/{}", u.id)) { (u.name) } }
+                            td { a href=(format!("/users/{}", u.id)) { (u.name) } @if u.is_chat_admin() { " " (verified()) } }
                             td { (u.username.as_deref().unwrap_or("—")) }
                             td { (limit(u.daily_limit_gb)) " / day · " (limit(u.monthly_limit_gb)) " / month" }
-                            td { @if u.disabled != 0 { span.pill.bad { "Disabled" } } @else { span.pill.ok { "Active" } } }
+                            td {
+                                @if u.disabled != 0 { span.pill.bad { "Disabled" } } @else { span.pill.ok { "Active" } }
+                                @if u.muted_until(now).is_some() { " " span.pill.warn { "Muted in chat" } }
+                            }
                             td { (ago(now, u.created_at)) }
                         }
                     }
@@ -75,7 +140,7 @@ pub fn detail(data: &UserPage, flash: Option<&Flash>) -> Markup {
     let UserPage { user, devices, hub, now, .. } = *data;
     let base = format!("/users/{}", user.id);
     let body = html! {
-        h1 { (user.name) " " @if user.disabled != 0 { span.pill.bad { "Disabled" } } }
+        h1 { (user.name) " " @if user.is_chat_admin() { (verified()) " " } @if user.disabled != 0 { span.pill.bad { "Disabled" } } }
         @if let Some(password) = data.new_password {
             div.card {
                 h2 { "Sign-in details" }
@@ -131,6 +196,7 @@ pub fn detail(data: &UserPage, flash: Option<&Flash>) -> Markup {
                 p.muted { "Linked by the user in the app. They can unlink in the app's settings." }
             }
         }
+        (chat_card(user, &base, now))
         div.card {
             h2 { "Catalog" }
             p.muted { "See what this user's app gets from Telegram-Stremio, using their own access token." }

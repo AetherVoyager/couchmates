@@ -18,7 +18,7 @@ h1{font-size:22px;margin:0 0 18px}h2{font-size:16px;margin:0 0 12px}
 .grid .card{margin:0}.stat{font-size:26px;font-weight:700}.label{color:var(--muted);font-size:13px}
 table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted);font-weight:500;font-size:13px}
 form.inline{display:inline}label{display:block;margin:10px 0 4px;color:var(--muted);font-size:13px}
-input[type=text],input[type=password],input[type=url],input[type=number]{width:100%;max-width:460px;padding:9px 11px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
+input[type=text],input[type=password],input[type=url],input[type=number],textarea,select{width:100%;max-width:460px;padding:9px 11px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
 button{padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--accent);color:#fff;font:inherit;cursor:pointer}
 button.secondary{background:transparent;color:var(--text)}button.danger{background:transparent;color:var(--bad);border-color:var(--bad)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
