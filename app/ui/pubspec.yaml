@@ -121,8 +121,8 @@ dev_dependencies:
   path_provider_linux: ^2.2.1
   path_provider_windows: ^2.3.0
   plugin_platform_interface: ^2.1.0
-  freezed: ^3.2.5
-  analyzer: 10.2.0
+  freezed: ^4.0.3
+  analyzer: ^14.0.0
 
 dependency_overrides:
   # background_downloader 9.6.2 requires hosted connectivity_plus; keep the

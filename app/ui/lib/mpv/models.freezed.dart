@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // coverage:ignore-file
-// ignore_for_file: type=lint
+// ignore_for_file: type=lint, type=warning, deprecated_member_use, deprecated_member_use_from_same_package
 // ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
 
 part of 'models.dart';
@@ -9,6 +9,7 @@ part of 'models.dart';
 // FreezedGenerator
 // **************************************************************************
 
+// GENERATED CODE - DO NOT MODIFY BY HAND
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
@@ -25,16 +26,21 @@ $BufferRangeCopyWith<BufferRange> get copyWith => _$BufferRangeCopyWithImpl<Buff
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is BufferRange&&(identical(other.start, start) || other.start == start)&&(identical(other.end, end) || other.end == end));
+  final _this = this as BufferRange;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is BufferRange&&(identical(other.start, _this.start) || other.start == _this.start)&&(identical(other.end, _this.end) || other.end == _this.end));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,start,end);
+int get hashCode {
+  final _this = this as BufferRange;
+  return Object.hash(runtimeType,_this.start,_this.end);
+}
 
 @override
 String toString() {
-  return 'BufferRange(start: $start, end: $end)';
+  final _this = this as BufferRange;
+  return 'BufferRange(start: ${_this.start}, end: ${_this.end})';
 }
 
 
@@ -63,7 +69,7 @@ class _$BufferRangeCopyWithImpl<$Res>
 /// Create a copy of BufferRange
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? start = null,Object? end = null,}) {
-  return _then(_self.copyWith(
+  return _then(BufferRange(
 start: null == start ? _self.start : start // ignore: cast_nullable_to_non_nullable
 as Duration,end: null == end ? _self.end : end // ignore: cast_nullable_to_non_nullable
 as Duration,
@@ -217,16 +223,18 @@ _$BufferRangeCopyWith<_BufferRange> get copyWith => __$BufferRangeCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _BufferRange&&(identical(other.start, start) || other.start == start)&&(identical(other.end, end) || other.end == end));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _BufferRange&&(identical(other.start, start) || other.start == start)&&(identical(other.end, end) || other.end == end));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,start,end);
+int get hashCode {
+    return Object.hash(runtimeType,start,end);
+}
 
 @override
 String toString() {
-  return 'BufferRange(start: $start, end: $end)';
+    return 'BufferRange(start: $start, end: $end)';
 }
 
 
@@ -279,12 +287,16 @@ $PlayerErrorCopyWith<PlayerError> get copyWith => _$PlayerErrorCopyWithImpl<Play
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerError&&(identical(other.message, message) || other.message == message)&&(identical(other.cause, cause) || other.cause == cause));
+  final _this = this as PlayerError;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerError&&(identical(other.message, _this.message) || other.message == _this.message)&&(identical(other.cause, _this.cause) || other.cause == _this.cause));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,message,cause);
+int get hashCode {
+  final _this = this as PlayerError;
+  return Object.hash(runtimeType,_this.message,_this.cause);
+}
 
 
 
@@ -313,8 +325,8 @@ class _$PlayerErrorCopyWithImpl<$Res>
 /// Create a copy of PlayerError
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? message = null,Object? cause = freezed,}) {
-  return _then(_self.copyWith(
-message: null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
+  return _then(PlayerError(
+null == message ? _self.message : message // ignore: cast_nullable_to_non_nullable
 as String,cause: freezed == cause ? _self.cause : cause // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
@@ -467,12 +479,14 @@ _$PlayerErrorCopyWith<_PlayerError> get copyWith => __$PlayerErrorCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlayerError&&(identical(other.message, message) || other.message == message)&&(identical(other.cause, cause) || other.cause == cause));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlayerError&&(identical(other.message, message) || other.message == message)&&(identical(other.cause, cause) || other.cause == cause));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,message,cause);
+int get hashCode {
+    return Object.hash(runtimeType,message,cause);
+}
 
 
 
@@ -528,16 +542,21 @@ $AudioTrackCopyWith<AudioTrack> get copyWith => _$AudioTrackCopyWithImpl<AudioTr
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AudioTrack&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.language, language) || other.language == language)&&(identical(other.codec, codec) || other.codec == codec)&&(identical(other.codecProfile, codecProfile) || other.codecProfile == codecProfile)&&(identical(other.channels, channels) || other.channels == channels)&&(identical(other.sampleRate, sampleRate) || other.sampleRate == sampleRate)&&(identical(other.bitrate, bitrate) || other.bitrate == bitrate)&&(identical(other.isDefault, isDefault) || other.isDefault == isDefault)&&(identical(other.isForced, isForced) || other.isForced == isForced));
+  final _this = this as AudioTrack;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AudioTrack&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.title, _this.title) || other.title == _this.title)&&(identical(other.language, _this.language) || other.language == _this.language)&&(identical(other.codec, _this.codec) || other.codec == _this.codec)&&(identical(other.codecProfile, _this.codecProfile) || other.codecProfile == _this.codecProfile)&&(identical(other.channels, _this.channels) || other.channels == _this.channels)&&(identical(other.sampleRate, _this.sampleRate) || other.sampleRate == _this.sampleRate)&&(identical(other.bitrate, _this.bitrate) || other.bitrate == _this.bitrate)&&(identical(other.isDefault, _this.isDefault) || other.isDefault == _this.isDefault)&&(identical(other.isForced, _this.isForced) || other.isForced == _this.isForced));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,title,language,codec,codecProfile,channels,sampleRate,bitrate,isDefault,isForced);
+int get hashCode {
+  final _this = this as AudioTrack;
+  return Object.hash(runtimeType,_this.id,_this.title,_this.language,_this.codec,_this.codecProfile,_this.channels,_this.sampleRate,_this.bitrate,_this.isDefault,_this.isForced);
+}
 
 @override
 String toString() {
-  return 'AudioTrack(id: $id, title: $title, language: $language, codec: $codec, codecProfile: $codecProfile, channels: $channels, sampleRate: $sampleRate, bitrate: $bitrate, isDefault: $isDefault, isForced: $isForced)';
+  final _this = this as AudioTrack;
+  return 'AudioTrack(id: ${_this.id}, title: ${_this.title}, language: ${_this.language}, codec: ${_this.codec}, codecProfile: ${_this.codecProfile}, channels: ${_this.channels}, sampleRate: ${_this.sampleRate}, bitrate: ${_this.bitrate}, isDefault: ${_this.isDefault}, isForced: ${_this.isForced})';
 }
 
 
@@ -566,7 +585,7 @@ class _$AudioTrackCopyWithImpl<$Res>
 /// Create a copy of AudioTrack
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = freezed,Object? language = freezed,Object? codec = freezed,Object? codecProfile = freezed,Object? channels = freezed,Object? sampleRate = freezed,Object? bitrate = freezed,Object? isDefault = null,Object? isForced = null,}) {
-  return _then(_self.copyWith(
+  return _then(AudioTrack(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: freezed == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
 as String?,language: freezed == language ? _self.language : language // ignore: cast_nullable_to_non_nullable
@@ -739,16 +758,18 @@ _$AudioTrackCopyWith<_AudioTrack> get copyWith => __$AudioTrackCopyWithImpl<_Aud
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AudioTrack&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.language, language) || other.language == language)&&(identical(other.codec, codec) || other.codec == codec)&&(identical(other.codecProfile, codecProfile) || other.codecProfile == codecProfile)&&(identical(other.channels, channels) || other.channels == channels)&&(identical(other.sampleRate, sampleRate) || other.sampleRate == sampleRate)&&(identical(other.bitrate, bitrate) || other.bitrate == bitrate)&&(identical(other.isDefault, isDefault) || other.isDefault == isDefault)&&(identical(other.isForced, isForced) || other.isForced == isForced));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AudioTrack&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.language, language) || other.language == language)&&(identical(other.codec, codec) || other.codec == codec)&&(identical(other.codecProfile, codecProfile) || other.codecProfile == codecProfile)&&(identical(other.channels, channels) || other.channels == channels)&&(identical(other.sampleRate, sampleRate) || other.sampleRate == sampleRate)&&(identical(other.bitrate, bitrate) || other.bitrate == bitrate)&&(identical(other.isDefault, isDefault) || other.isDefault == isDefault)&&(identical(other.isForced, isForced) || other.isForced == isForced));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,title,language,codec,codecProfile,channels,sampleRate,bitrate,isDefault,isForced);
+int get hashCode {
+    return Object.hash(runtimeType,id,title,language,codec,codecProfile,channels,sampleRate,bitrate,isDefault,isForced);
+}
 
 @override
 String toString() {
-  return 'AudioTrack(id: $id, title: $title, language: $language, codec: $codec, codecProfile: $codecProfile, channels: $channels, sampleRate: $sampleRate, bitrate: $bitrate, isDefault: $isDefault, isForced: $isForced)';
+    return 'AudioTrack(id: $id, title: $title, language: $language, codec: $codec, codecProfile: $codecProfile, channels: $channels, sampleRate: $sampleRate, bitrate: $bitrate, isDefault: $isDefault, isForced: $isForced)';
 }
 
 
@@ -809,16 +830,21 @@ $SubtitleTrackCopyWith<SubtitleTrack> get copyWith => _$SubtitleTrackCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SubtitleTrack&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.language, language) || other.language == language)&&(identical(other.codec, codec) || other.codec == codec)&&(identical(other.isDefault, isDefault) || other.isDefault == isDefault)&&(identical(other.isForced, isForced) || other.isForced == isForced)&&(identical(other.isExternal, isExternal) || other.isExternal == isExternal)&&(identical(other.isContainer, isContainer) || other.isContainer == isContainer)&&(identical(other.uri, uri) || other.uri == uri));
+  final _this = this as SubtitleTrack;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SubtitleTrack&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.title, _this.title) || other.title == _this.title)&&(identical(other.language, _this.language) || other.language == _this.language)&&(identical(other.codec, _this.codec) || other.codec == _this.codec)&&(identical(other.isDefault, _this.isDefault) || other.isDefault == _this.isDefault)&&(identical(other.isForced, _this.isForced) || other.isForced == _this.isForced)&&(identical(other.isExternal, _this.isExternal) || other.isExternal == _this.isExternal)&&(identical(other.isContainer, _this.isContainer) || other.isContainer == _this.isContainer)&&(identical(other.uri, _this.uri) || other.uri == _this.uri));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,title,language,codec,isDefault,isForced,isExternal,isContainer,uri);
+int get hashCode {
+  final _this = this as SubtitleTrack;
+  return Object.hash(runtimeType,_this.id,_this.title,_this.language,_this.codec,_this.isDefault,_this.isForced,_this.isExternal,_this.isContainer,_this.uri);
+}
 
 @override
 String toString() {
-  return 'SubtitleTrack(id: $id, title: $title, language: $language, codec: $codec, isDefault: $isDefault, isForced: $isForced, isExternal: $isExternal, isContainer: $isContainer, uri: $uri)';
+  final _this = this as SubtitleTrack;
+  return 'SubtitleTrack(id: ${_this.id}, title: ${_this.title}, language: ${_this.language}, codec: ${_this.codec}, isDefault: ${_this.isDefault}, isForced: ${_this.isForced}, isExternal: ${_this.isExternal}, isContainer: ${_this.isContainer}, uri: ${_this.uri})';
 }
 
 
@@ -847,7 +873,7 @@ class _$SubtitleTrackCopyWithImpl<$Res>
 /// Create a copy of SubtitleTrack
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = freezed,Object? language = freezed,Object? codec = freezed,Object? isDefault = null,Object? isForced = null,Object? isExternal = null,Object? isContainer = null,Object? uri = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(SubtitleTrack(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: freezed == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
 as String?,language: freezed == language ? _self.language : language // ignore: cast_nullable_to_non_nullable
@@ -1015,16 +1041,18 @@ _$SubtitleTrackCopyWith<_SubtitleTrack> get copyWith => __$SubtitleTrackCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SubtitleTrack&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.language, language) || other.language == language)&&(identical(other.codec, codec) || other.codec == codec)&&(identical(other.isDefault, isDefault) || other.isDefault == isDefault)&&(identical(other.isForced, isForced) || other.isForced == isForced)&&(identical(other.isExternal, isExternal) || other.isExternal == isExternal)&&(identical(other.isContainer, isContainer) || other.isContainer == isContainer)&&(identical(other.uri, uri) || other.uri == uri));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _SubtitleTrack&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.language, language) || other.language == language)&&(identical(other.codec, codec) || other.codec == codec)&&(identical(other.isDefault, isDefault) || other.isDefault == isDefault)&&(identical(other.isForced, isForced) || other.isForced == isForced)&&(identical(other.isExternal, isExternal) || other.isExternal == isExternal)&&(identical(other.isContainer, isContainer) || other.isContainer == isContainer)&&(identical(other.uri, uri) || other.uri == uri));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,title,language,codec,isDefault,isForced,isExternal,isContainer,uri);
+int get hashCode {
+    return Object.hash(runtimeType,id,title,language,codec,isDefault,isForced,isExternal,isContainer,uri);
+}
 
 @override
 String toString() {
-  return 'SubtitleTrack(id: $id, title: $title, language: $language, codec: $codec, isDefault: $isDefault, isForced: $isForced, isExternal: $isExternal, isContainer: $isContainer, uri: $uri)';
+    return 'SubtitleTrack(id: $id, title: $title, language: $language, codec: $codec, isDefault: $isDefault, isForced: $isForced, isExternal: $isExternal, isContainer: $isContainer, uri: $uri)';
 }
 
 
@@ -1084,12 +1112,16 @@ $TracksCopyWith<Tracks> get copyWith => _$TracksCopyWithImpl<Tracks>(this as Tra
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Tracks&&const DeepCollectionEquality().equals(other.audio, audio)&&const DeepCollectionEquality().equals(other.subtitle, subtitle));
+  final _this = this as Tracks;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Tracks&&const DeepCollectionEquality().equals(other.audio, _this.audio)&&const DeepCollectionEquality().equals(other.subtitle, _this.subtitle));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(audio),const DeepCollectionEquality().hash(subtitle));
+int get hashCode {
+  final _this = this as Tracks;
+  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.audio),const DeepCollectionEquality().hash(_this.subtitle));
+}
 
 
 
@@ -1118,7 +1150,7 @@ class _$TracksCopyWithImpl<$Res>
 /// Create a copy of Tracks
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? audio = null,Object? subtitle = null,}) {
-  return _then(_self.copyWith(
+  return _then(Tracks(
 audio: null == audio ? _self.audio : audio // ignore: cast_nullable_to_non_nullable
 as List<AudioTrack>,subtitle: null == subtitle ? _self.subtitle : subtitle // ignore: cast_nullable_to_non_nullable
 as List<SubtitleTrack>,
@@ -1256,7 +1288,7 @@ return $default(_that.audio,_that.subtitle);case _:
 
 
 class _Tracks extends Tracks {
-  const _Tracks({final  List<AudioTrack> audio = const <AudioTrack>[], final  List<SubtitleTrack> subtitle = const <SubtitleTrack>[]}): _audio = audio,_subtitle = subtitle,super._();
+  const _Tracks({ List<AudioTrack> audio = const <AudioTrack>[],  List<SubtitleTrack> subtitle = const <SubtitleTrack>[]}): _audio = audio,_subtitle = subtitle,super._();
   
 
  final  List<AudioTrack> _audio;
@@ -1284,12 +1316,14 @@ _$TracksCopyWith<_Tracks> get copyWith => __$TracksCopyWithImpl<_Tracks>(this, _
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Tracks&&const DeepCollectionEquality().equals(other._audio, _audio)&&const DeepCollectionEquality().equals(other._subtitle, _subtitle));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Tracks&&const DeepCollectionEquality().equals(other.audio, _audio)&&const DeepCollectionEquality().equals(other.subtitle, _subtitle));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_audio),const DeepCollectionEquality().hash(_subtitle));
+int get hashCode {
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_audio),const DeepCollectionEquality().hash(_subtitle));
+}
 
 
 
@@ -1342,16 +1376,21 @@ $TrackSelectionCopyWith<TrackSelection> get copyWith => _$TrackSelectionCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is TrackSelection&&(identical(other.audio, audio) || other.audio == audio)&&(identical(other.subtitle, subtitle) || other.subtitle == subtitle)&&(identical(other.secondarySubtitle, secondarySubtitle) || other.secondarySubtitle == secondarySubtitle));
+  final _this = this as TrackSelection;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is TrackSelection&&(identical(other.audio, _this.audio) || other.audio == _this.audio)&&(identical(other.subtitle, _this.subtitle) || other.subtitle == _this.subtitle)&&(identical(other.secondarySubtitle, _this.secondarySubtitle) || other.secondarySubtitle == _this.secondarySubtitle));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,audio,subtitle,secondarySubtitle);
+int get hashCode {
+  final _this = this as TrackSelection;
+  return Object.hash(runtimeType,_this.audio,_this.subtitle,_this.secondarySubtitle);
+}
 
 @override
 String toString() {
-  return 'TrackSelection(audio: $audio, subtitle: $subtitle, secondarySubtitle: $secondarySubtitle)';
+  final _this = this as TrackSelection;
+  return 'TrackSelection(audio: ${_this.audio}, subtitle: ${_this.subtitle}, secondarySubtitle: ${_this.secondarySubtitle})';
 }
 
 
@@ -1380,7 +1419,7 @@ class _$TrackSelectionCopyWithImpl<$Res>
 /// Create a copy of TrackSelection
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? audio = freezed,Object? subtitle = freezed,Object? secondarySubtitle = freezed,}) {
-  return _then(_self.copyWith(
+  return _then(TrackSelection(
 audio: freezed == audio ? _self.audio : audio // ignore: cast_nullable_to_non_nullable
 as AudioTrack?,subtitle: freezed == subtitle ? _self.subtitle : subtitle // ignore: cast_nullable_to_non_nullable
 as SubtitleTrack?,secondarySubtitle: freezed == secondarySubtitle ? _self.secondarySubtitle : secondarySubtitle // ignore: cast_nullable_to_non_nullable
@@ -1572,16 +1611,18 @@ _$TrackSelectionCopyWith<_TrackSelection> get copyWith => __$TrackSelectionCopyW
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _TrackSelection&&(identical(other.audio, audio) || other.audio == audio)&&(identical(other.subtitle, subtitle) || other.subtitle == subtitle)&&(identical(other.secondarySubtitle, secondarySubtitle) || other.secondarySubtitle == secondarySubtitle));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TrackSelection&&(identical(other.audio, audio) || other.audio == audio)&&(identical(other.subtitle, subtitle) || other.subtitle == subtitle)&&(identical(other.secondarySubtitle, secondarySubtitle) || other.secondarySubtitle == secondarySubtitle));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,audio,subtitle,secondarySubtitle);
+int get hashCode {
+    return Object.hash(runtimeType,audio,subtitle,secondarySubtitle);
+}
 
 @override
 String toString() {
-  return 'TrackSelection(audio: $audio, subtitle: $subtitle, secondarySubtitle: $secondarySubtitle)';
+    return 'TrackSelection(audio: $audio, subtitle: $subtitle, secondarySubtitle: $secondarySubtitle)';
 }
 
 
@@ -1671,16 +1712,21 @@ $AudioDeviceCopyWith<AudioDevice> get copyWith => _$AudioDeviceCopyWithImpl<Audi
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AudioDevice&&(identical(other.name, name) || other.name == name)&&(identical(other.description, description) || other.description == description));
+  final _this = this as AudioDevice;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AudioDevice&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.description, _this.description) || other.description == _this.description));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,name,description);
+int get hashCode {
+  final _this = this as AudioDevice;
+  return Object.hash(runtimeType,_this.name,_this.description);
+}
 
 @override
 String toString() {
-  return 'AudioDevice(name: $name, description: $description)';
+  final _this = this as AudioDevice;
+  return 'AudioDevice(name: ${_this.name}, description: ${_this.description})';
 }
 
 
@@ -1709,7 +1755,7 @@ class _$AudioDeviceCopyWithImpl<$Res>
 /// Create a copy of AudioDevice
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? name = null,Object? description = null,}) {
-  return _then(_self.copyWith(
+  return _then(AudioDevice(
 name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
 as String,description: null == description ? _self.description : description // ignore: cast_nullable_to_non_nullable
 as String,
@@ -1863,16 +1909,18 @@ _$AudioDeviceCopyWith<_AudioDevice> get copyWith => __$AudioDeviceCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AudioDevice&&(identical(other.name, name) || other.name == name)&&(identical(other.description, description) || other.description == description));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AudioDevice&&(identical(other.name, name) || other.name == name)&&(identical(other.description, description) || other.description == description));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,name,description);
+int get hashCode {
+    return Object.hash(runtimeType,name,description);
+}
 
 @override
 String toString() {
-  return 'AudioDevice(name: $name, description: $description)';
+    return 'AudioDevice(name: $name, description: $description)';
 }
 
 
@@ -1925,12 +1973,16 @@ $PlayerLogCopyWith<PlayerLog> get copyWith => _$PlayerLogCopyWithImpl<PlayerLog>
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerLog&&(identical(other.level, level) || other.level == level)&&(identical(other.prefix, prefix) || other.prefix == prefix)&&(identical(other.text, text) || other.text == text));
+  final _this = this as PlayerLog;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerLog&&(identical(other.level, _this.level) || other.level == _this.level)&&(identical(other.prefix, _this.prefix) || other.prefix == _this.prefix)&&(identical(other.text, _this.text) || other.text == _this.text));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,level,prefix,text);
+int get hashCode {
+  final _this = this as PlayerLog;
+  return Object.hash(runtimeType,_this.level,_this.prefix,_this.text);
+}
 
 
 
@@ -1959,7 +2011,7 @@ class _$PlayerLogCopyWithImpl<$Res>
 /// Create a copy of PlayerLog
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? level = null,Object? prefix = null,Object? text = null,}) {
-  return _then(_self.copyWith(
+  return _then(PlayerLog(
 level: null == level ? _self.level : level // ignore: cast_nullable_to_non_nullable
 as PlayerLogLevel,prefix: null == prefix ? _self.prefix : prefix // ignore: cast_nullable_to_non_nullable
 as String,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
@@ -2115,12 +2167,14 @@ _$PlayerLogCopyWith<_PlayerLog> get copyWith => __$PlayerLogCopyWithImpl<_Player
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlayerLog&&(identical(other.level, level) || other.level == level)&&(identical(other.prefix, prefix) || other.prefix == prefix)&&(identical(other.text, text) || other.text == text));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PlayerLog&&(identical(other.level, level) || other.level == level)&&(identical(other.prefix, prefix) || other.prefix == prefix)&&(identical(other.text, text) || other.text == text));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,level,prefix,text);
+int get hashCode {
+    return Object.hash(runtimeType,level,prefix,text);
+}
 
 
 
@@ -2174,16 +2228,21 @@ $MediaCopyWith<Media> get copyWith => _$MediaCopyWithImpl<Media>(this as Media, 
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Media&&(identical(other.uri, uri) || other.uri == uri)&&const DeepCollectionEquality().equals(other.headers, headers)&&(identical(other.start, start) || other.start == start));
+  final _this = this as Media;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Media&&(identical(other.uri, _this.uri) || other.uri == _this.uri)&&const DeepCollectionEquality().equals(other.headers, _this.headers)&&(identical(other.start, _this.start) || other.start == _this.start));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,uri,const DeepCollectionEquality().hash(headers),start);
+int get hashCode {
+  final _this = this as Media;
+  return Object.hash(runtimeType,_this.uri,const DeepCollectionEquality().hash(_this.headers),_this.start);
+}
 
 @override
 String toString() {
-  return 'Media(uri: $uri, headers: $headers, start: $start)';
+  final _this = this as Media;
+  return 'Media(uri: ${_this.uri}, headers: ${_this.headers}, start: ${_this.start})';
 }
 
 
@@ -2212,8 +2271,8 @@ class _$MediaCopyWithImpl<$Res>
 /// Create a copy of Media
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') @override $Res call({Object? uri = null,Object? headers = freezed,Object? start = freezed,}) {
-  return _then(_self.copyWith(
-uri: null == uri ? _self.uri : uri // ignore: cast_nullable_to_non_nullable
+  return _then(Media(
+null == uri ? _self.uri : uri // ignore: cast_nullable_to_non_nullable
 as String,headers: freezed == headers ? _self.headers : headers // ignore: cast_nullable_to_non_nullable
 as Map<String, String>?,start: freezed == start ? _self.start : start // ignore: cast_nullable_to_non_nullable
 as Duration?,
@@ -2351,7 +2410,7 @@ return $default(_that.uri,_that.headers,_that.start);case _:
 
 
 class _Media implements Media {
-  const _Media(this.uri, {final  Map<String, String>? headers, this.start}): _headers = headers;
+  const _Media(this.uri, { Map<String, String>? headers, this.start}): _headers = headers;
   
 
 @override final  String uri;
@@ -2376,16 +2435,18 @@ _$MediaCopyWith<_Media> get copyWith => __$MediaCopyWithImpl<_Media>(this, _$ide
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _Media&&(identical(other.uri, uri) || other.uri == uri)&&const DeepCollectionEquality().equals(other._headers, _headers)&&(identical(other.start, start) || other.start == start));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Media&&(identical(other.uri, uri) || other.uri == uri)&&const DeepCollectionEquality().equals(other.headers, _headers)&&(identical(other.start, start) || other.start == start));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,uri,const DeepCollectionEquality().hash(_headers),start);
+int get hashCode {
+    return Object.hash(runtimeType,uri,const DeepCollectionEquality().hash(_headers),start);
+}
 
 @override
 String toString() {
-  return 'Media(uri: $uri, headers: $headers, start: $start)';
+    return 'Media(uri: $uri, headers: $headers, start: $start)';
 }
 
 
