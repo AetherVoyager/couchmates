@@ -247,12 +247,7 @@ pub fn session(row: &PresenceRow, server_id: &str, now: i64) -> Value {
 
 /// Sessions for every device that reported in the last minute and a half.
 pub fn sessions(rows: &[PresenceRow], server_id: &str, now: i64) -> Value {
-    Value::Array(
-        rows.iter()
-            .filter(|r| r.seen_at >= now - crate::social::ONLINE_SECS)
-            .map(|r| session(r, server_id, now))
-            .collect(),
-    )
+    Value::Array(rows.iter().filter(|r| crate::social::online(r, now)).map(|r| session(r, server_id, now)).collect())
 }
 
 /// The Hub's users, none of them Jellyfin admins (the API key is the admin).
@@ -493,6 +488,7 @@ mod tests {
             ip: Some("203.0.113.9".into()),
             device_name: Some("Living room PC".into()),
             chat_admin: 0,
+            offline: 0,
         }
     }
 

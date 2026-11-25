@@ -290,6 +290,14 @@ s, _, body = call(anon, "/api/app/join-requests/cancel", data={"id": out[0]["id"
 check("alice clears it", s == 200 and not json.loads(body)["requests"], body)
 s, _, body = call(anon, "/api/app/join-requests", data={"to_user_id": json.loads(call(anon, "/api/app/config", headers=auth)[2])["user"]["id"]}, headers=bob)
 check("can't ask to join yourself... or someone idle", s in (400, 409), body)
+s, _, body = call(anon, "/api/app/presence", data={"watching": watching}, headers=bob)
+s, _, body = call(anon, "/api/app/presence", data={"watching": None, "leaving": True}, headers=bob)
+check("bob closes the app", s == 200, body)
+s, _, body = call(anon, "/api/app/presence", data={"watching": None}, headers=auth)
+bob_row = next(f for f in json.loads(body)["friends"] if f["person"]["id"] == bob_id)
+check("alice sees bob offline at once, not watching", not bob_row["online"] and bob_row["watching"] is None, body)
+s, _, body = call(anon, "/api/app/join-requests", data={"to_user_id": bob_id}, headers=auth)
+check("and can't ask to join him", s == 409, body)
 
 # --- Tracearr: a read-only Jellyfin look-alike under /jellyfin, with its own key
 s, _, body = call(anon, "/jellyfin/System/Info/Public")

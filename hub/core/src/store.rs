@@ -116,6 +116,9 @@ pub struct PresenceRow {
     pub device_name: Option<String>,
     #[serde(default)]
     pub chat_admin: i64,
+    /// 1 once the device said it's closing; the next report clears it.
+    #[serde(default)]
+    pub offline: i64,
 }
 
 /// A public Stremio add-on from the Add-ons page, with its URL opened.
@@ -890,7 +893,7 @@ impl Store {
     /// Every device's presence, for users who aren't turned off.
     pub async fn presence_rows(&self) -> Result<Vec<PresenceRow>> {
         self.all(
-            "SELECT p.device_id, p.user_id, u.name, p.seen_at, p.watching, p.watching_since, p.ip, \
+            "SELECT p.device_id, p.user_id, u.name, p.seen_at, p.watching, p.watching_since, p.ip, p.offline, \
              d.name AS device_name, ph.version AS photo_version, u.chat_admin FROM presence p JOIN users u ON u.id = p.user_id \
              LEFT JOIN devices d ON d.id = p.device_id \
              LEFT JOIN photos ph ON ph.user_id = p.user_id WHERE u.disabled = 0",
@@ -907,12 +910,14 @@ impl Store {
         watching: Option<&str>,
         since: Option<i64>,
         ip: &str,
+        offline: bool,
     ) -> Result<()> {
         self.run(
-            "INSERT INTO presence (device_id, user_id, seen_at, watching, watching_since, ip) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+            "INSERT INTO presence (device_id, user_id, seen_at, watching, watching_since, ip, offline) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
              ON CONFLICT(device_id) DO UPDATE SET user_id = excluded.user_id, seen_at = excluded.seen_at, \
-             watching = excluded.watching, watching_since = excluded.watching_since, ip = excluded.ip",
+             watching = excluded.watching, watching_since = excluded.watching_since, ip = excluded.ip, \
+             offline = excluded.offline",
             &[
                 s(device_id),
                 s(user_id),
@@ -920,6 +925,7 @@ impl Store {
                 opt_s(watching),
                 since.map_or(JsValue::NULL, |v| n(v as f64)),
                 s(ip),
+                n(if offline { 1.0 } else { 0.0 }),
             ],
         )
         .await

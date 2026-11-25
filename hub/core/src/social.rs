@@ -3,7 +3,9 @@
 //! Each app posts its presence every 20 seconds or so ([`presence`]); the
 //! answer lists everyone else. To stay inside the free plan's daily writes,
 //! a device's row is only rewritten when what it plays changes, once a
-//! minute to keep it online, or when the position jumps (a seek).
+//! minute to keep it online, or when the position jumps (a seek). An app that
+//! closes says so (`leaving`), and its device goes offline at once instead of
+//! [`ONLINE_SECS`] after its reports stop.
 
 use std::collections::HashMap;
 
@@ -83,10 +85,15 @@ fn same_title(a: &NowWatching, b: &NowWatching) -> bool {
     a.meta_id == b.meta_id && a.episode == b.episode
 }
 
+/// [row]'s device reported recently and hasn't said it's closing.
+pub fn online(row: &PresenceRow, now: i64) -> bool {
+    row.offline == 0 && row.seen_at >= now - ONLINE_SECS
+}
+
 /// What [row]'s device plays, if it's still online, whether or not it's
 /// shared with friends.
 pub fn live_any(row: &PresenceRow, now: i64) -> Option<NowWatching> {
-    if row.seen_at < now - ONLINE_SECS { None } else { parse(row.watching.as_deref()) }
+    if online(row, now) { parse(row.watching.as_deref()) } else { None }
 }
 
 /// What [row]'s device plays, if it's still online and shared with friends.
@@ -105,16 +112,17 @@ fn playing(user_id: &str, rows: &[PresenceRow], now: i64) -> Option<(NowWatching
 
 /// What everyone but [me] is up to, and [me]'s join requests.
 pub fn activity(me: &str, rows: &[PresenceRow], requests: &[JoinRow], now: i64) -> Activity {
-    let mut people: HashMap<&str, (&str, i64, Option<i64>, bool)> = HashMap::new();
+    let mut people: HashMap<&str, (&str, i64, Option<i64>, bool, bool)> = HashMap::new();
     for r in rows.iter().filter(|r| r.user_id != me) {
-        let entry = people.entry(&r.user_id).or_insert((&r.name, r.seen_at, r.photo_version, r.chat_admin != 0));
+        let entry = people.entry(&r.user_id).or_insert((&r.name, r.seen_at, r.photo_version, r.chat_admin != 0, false));
         entry.1 = entry.1.max(r.seen_at);
+        entry.4 |= online(r, now);
     }
     let mut friends: Vec<FriendActivity> = people
         .into_iter()
-        .map(|(id, (name, last_seen, photo, admin))| FriendActivity {
+        .map(|(id, (name, last_seen, photo, admin, online))| FriendActivity {
             person: Person { id: id.into(), name: name.into(), photo: photo_path(id, photo), admin },
-            online: last_seen >= now - ONLINE_SECS,
+            online,
             last_seen,
             watching: playing(id, rows, now).map(|(w, since)| FriendWatching {
                 title: w.title,
@@ -219,17 +227,21 @@ pub async fn presence(mut req: Request, store: &Store) -> Result<Response> {
     let Ok(body) = req.json::<PresenceUpdate>().await else {
         return json_error("Send {\"watching\": … or null}.", 400);
     };
-    let watching = body.watching.and_then(clean);
+    let leaving = body.leaving;
+    let watching = if leaving { None } else { body.watching.and_then(clean) };
     let mut rows = store.presence_rows().await?;
     let now = now();
     let ip = web::client_ip(&req);
     let stored = rows.iter().position(|r| r.device_id == device.id);
     let moved = stored.is_some_and(|i| rows[i].ip.as_deref() != Some(ip.as_str()));
+    // Going offline, or coming back from it, is always written.
+    let flipped = stored.is_some_and(|i| (rows[i].offline != 0) != leaving);
     let write = presence_write(stored.map(|i| &rows[i]), watching.as_ref(), now).or_else(|| {
-        moved.then(|| (stored.and_then(|i| rows[i].watching.clone()), stored.and_then(|i| rows[i].watching_since)))
+        (moved || flipped)
+            .then(|| (stored.and_then(|i| rows[i].watching.clone()), stored.and_then(|i| rows[i].watching_since)))
     });
     if let Some((json, since)) = write {
-        store.save_presence(&user.id, &device.id, now, json.as_deref(), since, &ip).await?;
+        store.save_presence(&user.id, &device.id, now, json.as_deref(), since, &ip, leaving).await?;
         let row = PresenceRow {
             device_id: device.id.clone(),
             user_id: user.id.clone(),
@@ -241,6 +253,7 @@ pub async fn presence(mut req: Request, store: &Store) -> Result<Response> {
             ip: Some(ip),
             device_name: Some(device.name.clone()),
             chat_admin: user.chat_admin,
+            offline: leaving as i64,
         };
         match stored {
             Some(i) => rows[i] = row,
@@ -345,6 +358,7 @@ mod tests {
             ip: None,
             device_name: None,
             chat_admin: 0,
+            offline: 0,
         }
     }
 
@@ -416,6 +430,20 @@ mod tests {
         let (_, since) = presence_write(Some(&stored), Some(&watching("tt9", None)), now).unwrap();
         assert_eq!(since, Some(now));
         assert_eq!(presence_write(None, None, now), Some((None, None)));
+    }
+
+    #[test]
+    fn a_closed_app_is_offline_at_once() {
+        let now = 10_000;
+        let gone = PresenceRow { offline: 1, ..row("d1", "bob", now - 5, Some(watching("tt1", Some("K7MQ2X")))) };
+        let rows = vec![gone.clone(), row("d2", "ann", now - 5, None)];
+        let a = activity("me", &rows, &[], now);
+        let bob = a.friends.iter().find(|f| f.person.id == "bob").unwrap();
+        assert!(!bob.online && bob.watching.is_none() && bob.last_seen == now - 5);
+        assert!(playing("bob", &rows, now).is_none() && live_any(&gone, now).is_none());
+        // Bob's other device, still open, keeps him online.
+        let rows = vec![gone, row("d3", "bob", now - 5, None)];
+        assert!(activity("me", &rows, &[], now).friends[0].online);
     }
 
     #[test]

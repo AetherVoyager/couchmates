@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:couchmates_core/couchmates_core.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +22,17 @@ class FriendsLink extends ChangeNotifier {
       presence.declined.listen(_onDeclined),
     ]);
     _onSession();
+    // Closing the app says so, so friends don't see this user online and
+    // watching (and offering to join) until the Hub's timeout runs out.
+    _lifecycle = AppLifecycleListener(
+      onExitRequested: () async {
+        await presence.leave(timeout: const Duration(milliseconds: 1500));
+        return AppExitResponse.exit;
+      },
+    );
   }
+
+  late final AppLifecycleListener _lifecycle;
 
   final HubSession session;
   final AppSettings settings;
@@ -189,6 +200,7 @@ class FriendsLink extends ChangeNotifier {
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     session.removeListener(_onSession);
     settings.removeListener(_onSettings);
     watch.removeListener(_update);

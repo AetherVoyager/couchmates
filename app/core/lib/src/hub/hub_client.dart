@@ -64,7 +64,9 @@ class HubClient {
     }
     final http.Response response;
     try {
-      response = await http.Response.fromStream(await _http.send(request).timeout(timeout));
+      // The whole answer, body included: a stalled body would otherwise hang
+      // the caller (and, for presence, every report after it) for good.
+      response = await _http.send(request).then(http.Response.fromStream).timeout(timeout);
     } catch (e) {
       throw HubException("Couldn't reach the Hub. Check the address and your connection.");
     }
@@ -184,8 +186,15 @@ class HubClient {
 
   /// Says what this device plays (or that the app is open), and gets what
   /// everyone else is up to.
-  Future<Activity> presence(NowWatching? watching) async =>
-      Activity.fromJson(await _send('POST', HubPaths.presence, body: PresenceUpdate(watching: watching).toJson()));
+  /// With [leaving], this device goes offline at once, such as when the app
+  /// closes.
+  Future<Activity> presence(NowWatching? watching, {bool leaving = false}) async => Activity.fromJson(
+    await _send(
+      'POST',
+      HubPaths.presence,
+      body: PresenceUpdate(watching: watching, leaving: leaving).toJson(),
+    ),
+  );
 
   Future<Activity> askToJoin(String userId) async =>
       Activity.fromJson(await _send('POST', HubPaths.joinRequests, body: JoinRequestCreate(toUserId: userId).toJson()));

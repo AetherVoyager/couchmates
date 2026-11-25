@@ -350,6 +350,10 @@ pub struct PresenceUpdate {
     /// What this device is playing. None when nothing is, or when the user
     /// turned off sharing what they watch.
     pub watching: Option<NowWatching>,
+    /// The app is closing or signing out: this device goes offline at once,
+    /// instead of when its reports stop coming.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub leaving: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -839,6 +843,7 @@ mod tests {
         round_trips::<PresenceUpdate>(include_str!("../contract/presence_update.json"));
         round_trips::<PresenceUpdate>(include_str!("../contract/presence_update_idle.json"));
         round_trips::<PresenceUpdate>(include_str!("../contract/presence_update_private.json"));
+        round_trips::<PresenceUpdate>(include_str!("../contract/presence_update_leaving.json"));
         round_trips::<Activity>(include_str!("../contract/activity.json"));
         round_trips::<JoinRequestCreate>(include_str!("../contract/join_request_create.json"));
         round_trips::<JoinRequestAnswer>(include_str!("../contract/join_request_answer.json"));

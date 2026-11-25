@@ -722,17 +722,23 @@ class PlaybackInfo {
 }
 
 class PresenceUpdate {
-  const PresenceUpdate({this.watching});
+  const PresenceUpdate({this.watching, this.leaving = false});
 
   /// Null when nothing plays. With sharing turned off it's marked private.
   final NowWatching? watching;
 
+  /// The app is closing or signing out: this device goes offline at once.
+  final bool leaving;
+
   factory PresenceUpdate.fromJson(Json j) {
     final w = j['watching'] as Json?;
-    return PresenceUpdate(watching: w == null ? null : NowWatching.fromJson(w));
+    return PresenceUpdate(
+      watching: w == null ? null : NowWatching.fromJson(w),
+      leaving: j['leaving'] as bool? ?? false,
+    );
   }
 
-  Json toJson() => {'watching': watching?.toJson()};
+  Json toJson() => {'watching': watching?.toJson(), if (leaving) 'leaving': true};
 }
 
 /// Another user, as everyone sees them.

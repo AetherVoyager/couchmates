@@ -119,10 +119,30 @@ class Presence extends ChangeNotifier {
     try {
       _apply(await hub.presence(_watching?.sent(playback: playback?.call(), private: !_share)));
       _offline = false;
-    } on HubException {
+    } catch (_) {
+      // A Hub error, or an answer that doesn't parse: either way the list
+      // may be out of date, and the next tick tries again.
       _offline = true;
       notifyListeners();
     }
+  }
+
+  /// Tells the Hub this device is going away (the app is closing), so
+  /// friends see it offline and not watching at once instead of a minute and
+  /// a half later. Stops reporting. Never throws, and gives up after [timeout].
+  Future<void> leave({Duration timeout = const Duration(seconds: 2)}) async {
+    stop();
+    _watching = null;
+    final hub = _hub();
+    if (hub == null) return;
+    try {
+      // A report already on its way mustn't land after this and bring the
+      // device back online.
+      await _inFlight?.timeout(timeout);
+    } catch (_) {}
+    try {
+      await hub.presence(null, leaving: true).timeout(timeout);
+    } catch (_) {}
   }
 
   /// Asks [userId] to let this user join. Throws [HubException].

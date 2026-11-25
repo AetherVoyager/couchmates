@@ -42,6 +42,21 @@ void main() {
     expect(presence.requestTo('1111222233334444')?.accepted, isTrue);
   });
 
+  test('says it is leaving when the app closes, and stops reporting', () async {
+    final (:presence, :sent) = make();
+    presence.setWatching(watching);
+    presence.start();
+    await presence.leave();
+    expect(presence.running, isFalse);
+    expect(jsonDecode(sent.last.body), {'watching': null, 'leaving': true});
+  });
+
+  test('a bad answer counts as offline instead of being lost', () async {
+    final (:presence, sent: _) = make(reply: 'ok_response.json');
+    await presence.poke();
+    expect(presence.offline, isTrue);
+  });
+
   test('marks what plays private when sharing is off', () async {
     final (:presence, :sent) = make();
     presence.setWatching(watching);
