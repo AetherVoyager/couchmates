@@ -135,6 +135,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: couchmates-windows-x64
+          # On a tag this only hands the files to the release job, which keeps
+          # the lasting copy; a hand-started build keeps it a week to download.
+          # The default 90 days stored ~135 MB per run for nothing.
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 1 || 7 }}
           path: |
             couchmates-windows-setup.exe
             couchmates-windows-x64-portable.7z
