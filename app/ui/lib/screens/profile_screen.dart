@@ -9,6 +9,7 @@ import '../widgets/person_avatar.dart';
 import 'settings/setting_tiles.dart';
 import 'settings/trackers_screen.dart';
 import 'settings_screen.dart';
+import '../widgets/toasts.dart';
 
 /// The round avatar in the top-right corner, opening a profile menu.
 class ProfileButton extends StatelessWidget {
@@ -152,7 +153,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _reload() => setState(() => _profile = context.read<HubSession>().profile());
 
-  void _toast(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  void _toast(String text) => toasts.show(text);
 
   bool _photoBusy = false;
 
@@ -384,7 +385,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
       await context.read<HubSession>().changePassword(current: _current.text, next: _next.text);
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed.')));
+      toasts.success('Password changed.');
     } on HubException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {

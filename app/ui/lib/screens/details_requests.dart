@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../theme.dart';
 import '../widgets/poster.dart';
 import 'search_screen.dart';
+import '../widgets/toasts.dart';
 
 /// Opens [item]: the library's details when it has the title, otherwise another catalog's, marked as not in
 /// the library so it can be requested.
@@ -35,21 +36,16 @@ bool _askable(MediaRequest? r) => r == null || r.status == RequestStatus.decline
 
 /// Asks for [episodes] of [meta] and says how it went.
 Future<void> askForEpisodes(BuildContext context, StremioMeta meta, List<StremioVideo> episodes) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
   try {
     final saved = await context.read<HubSession>().askForEpisodes(meta, episodes);
     final n = saved.length;
-    messenger?.showSnackBar(
-      SnackBar(
-        content: Text(
-          n == 1
-              ? 'Requested ${saved.first.label}. You\'ll see when the admin answers.'
-              : 'Requested $n episodes of ${meta.name}. You\'ll see when the admin answers.',
-        ),
-      ),
+    toasts.success(
+      n == 1
+          ? 'Requested ${saved.first.label}. You\'ll see when the admin answers.'
+          : 'Requested $n episodes of ${meta.name}. You\'ll see when the admin answers.',
     );
   } catch (e) {
-    messenger?.showSnackBar(SnackBar(content: Text(errorText(e))));
+    toasts.error(errorText(e));
   }
 }
 
@@ -216,7 +212,7 @@ Future<void> _withdraw(BuildContext context, MediaRequest request) async {
   try {
     await context.read<HubSession>().withdrawRequest(request.id);
   } catch (e) {
-    if (context.mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(errorText(e))));
+    toasts.error(errorText(e));
   }
 }
 

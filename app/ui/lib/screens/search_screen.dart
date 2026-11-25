@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../theme.dart';
 import '../widgets/poster.dart';
+import '../widgets/toasts.dart';
 
 /// A search box over every catalog, with results as a poster grid. Titles in the library open as usual; the
 /// rest can be requested from the admin (the Requests tab lists the requests).
@@ -249,22 +250,17 @@ class _RequestButtonState extends State<_RequestButton> {
 
 /// Asks the admin for [meta] (with [video], that episode of the show) and says how it went.
 Future<MediaRequest?> askForTitle(BuildContext context, StremioMeta meta, {StremioVideo? video}) async {
-  final messenger = ScaffoldMessenger.maybeOf(context);
   try {
     final saved = await context.read<HubSession>().askFor(meta, video: video);
     final others = saved.requestedBy.length - 1;
-    messenger?.showSnackBar(
-      SnackBar(
-        content: Text(
-          others > 0
-              ? 'Added you to the request for ${saved.label}. ${others == 1 ? '1 other person' : '$others others'} asked too.'
-              : 'Requested ${saved.label}. You\'ll see when the admin answers.',
-        ),
-      ),
+    toasts.success(
+      others > 0
+          ? 'Added you to the request for ${saved.label}. ${others == 1 ? '1 other person' : '$others others'} asked too.'
+          : 'Requested ${saved.label}. You\'ll see when the admin answers.',
     );
     return saved;
   } catch (e) {
-    messenger?.showSnackBar(SnackBar(content: Text(errorText(e))));
+    toasts.error(errorText(e));
     return null;
   }
 }
@@ -397,9 +393,7 @@ class _RequestDialogState extends State<_RequestDialog> {
                   try {
                     await session.withdrawRequest(request.id);
                   } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(errorText(e))));
-                    }
+                    toasts.error(errorText(e));
                   }
                 }),
           child: const Text('Withdraw my request'),

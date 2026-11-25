@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../watch_together/watch_together.dart';
 import '../widgets/poster.dart';
 import 'player_screen.dart';
+import '../widgets/toasts.dart';
 
 /// Finds the streams for a movie or an episode, lets the user pick one when
 /// there are several, and opens the player. Notices from the server (such
@@ -25,7 +26,6 @@ Future<void> playTitle(
 }) async {
   final catalog = context.read<HubSession>().catalog;
   if (catalog == null) return;
-  final messenger = ScaffoldMessenger.of(context);
   final navigator = Navigator.of(context);
   final watch = context.read<WatchTogether>();
 
@@ -49,7 +49,7 @@ Future<void> playTitle(
   try {
     result = await _withSpinner(context, catalog.streams(meta.type, video?.id ?? meta.id));
   } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
+    toasts.error(errorText(e));
     return;
   }
   if (!context.mounted) return;
@@ -59,19 +59,13 @@ Future<void> playTitle(
   }
   if (result.streams.isEmpty) {
     final notice = result.notices.firstOrNull;
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(notice == null ? 'No playable copy of this yet.' : [notice.name, ?notice.text].join('\n')),
-      ),
-    );
+    toasts.show(notice == null ? 'No playable copy of this yet.' : [notice.name, ?notice.text].join('\n'));
     return;
   }
   final picked = result.streams.length == 1 ? result.streams.single : await _pickStream(context, result.streams);
   if (picked == null) return;
   if (watch.room?.inRoom == true && watch.room?.isHost == false) {
-    messenger.showSnackBar(
-      const SnackBar(content: Text("You're in a watch party; only the host picks for the room. Playing just for you.")),
-    );
+    toasts.show("You're in a watch party; only the host picks for the room. Playing just for you.");
   }
   await navigator.push(
     MaterialPageRoute(

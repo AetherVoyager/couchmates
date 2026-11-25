@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../widgets/voice_button.dart';
 import 'watch_together.dart';
+import '../widgets/toasts.dart';
 
 Future<void> showWatchTogetherSheet(BuildContext context) => showModalBottomSheet<void>(
   context: context,
@@ -129,7 +130,7 @@ class _WatchTogetherSheetState extends State<_WatchTogetherSheet> {
           borderRadius: BorderRadius.circular(12),
           onTap: () {
             Clipboard.setData(ClipboardData(text: room.code ?? ''));
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Room code copied')));
+            toasts.success('Room code copied');
           },
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 16),

@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/poster.dart';
 import 'play.dart';
 import 'search_screen.dart';
+import '../widgets/toasts.dart';
 
 /// The Requests tab: the user's requests and everyone's (most wanted first), the requested titles that just
 /// reached the library, and the next episodes of requested shows.
@@ -212,13 +213,12 @@ class _RequestTileState extends State<RequestTile> {
 
   Future<void> _run(Future<String?> Function(HubSession session) action) async {
     final session = context.read<HubSession>();
-    final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() => _busy = true);
     try {
       final said = await action(session);
-      if (said != null) messenger?.showSnackBar(SnackBar(content: Text(said)));
+      if (said != null) toasts.success(said);
     } catch (e) {
-      messenger?.showSnackBar(SnackBar(content: Text(errorText(e))));
+      toasts.error(errorText(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../widgets/toasts.dart';
+
 /// Link Trakt or Simkl so what you watch is recorded there.
 class TrackersSection extends StatefulWidget {
   const TrackersSection({super.key});
@@ -51,9 +53,7 @@ class _TrackersSectionState extends State<TrackersSection> {
                       try {
                         await session.unlinkTracker(t.service);
                       } on HubException catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-                        }
+                        toasts.error(e.message);
                       }
                     },
                     child: const Text('Unlink'),

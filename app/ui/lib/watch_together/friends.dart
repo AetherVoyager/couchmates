@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'watch_together.dart';
+import '../widgets/toasts.dart';
 
 /// Connects [Presence] to the rest of the app: tells the Hub what the player
 /// has open, joins the room when someone lets this user in, and creates a
 /// room to let others in.
 class FriendsLink extends ChangeNotifier {
-  FriendsLink({required this.session, required this.settings, required this.watch, required this.messenger}) {
+  FriendsLink({required this.session, required this.settings, required this.watch}) {
     presence = Presence(hub: () => session.status == SessionStatus.signedIn ? session.hub : null);
     presence.share = settings.get(Settings.shareActivity);
     session.addListener(_onSession);
@@ -49,7 +50,6 @@ class FriendsLink extends ChangeNotifier {
   final HubSession session;
   final AppSettings settings;
   final WatchTogether watch;
-  final GlobalKey<ScaffoldMessengerState> messenger;
   late final Presence presence;
   final List<StreamSubscription<JoinRequest>> _subs = [];
 
@@ -178,23 +178,17 @@ class FriendsLink extends ChangeNotifier {
     _askedCount++;
     notifyListeners();
     if (!settings.get(Settings.showBubble)) {
-      messenger.currentState?.showSnackBar(
-        SnackBar(
-          content: Text('${request.person.name} wants to join you'),
-          duration: const Duration(seconds: 20),
-          action: SnackBarAction(label: 'Let in', onPressed: () => unawaited(accept(request))),
-        ),
+      toasts.show(
+        '${request.person.name} wants to join you',
+        action: 'Let in',
+        onAction: () => unawaited(accept(request)),
       );
     }
   }
 
   void _onDeclined(JoinRequest request) => _toast("${request.person.name} can't right now");
 
-  void _toast(String text) {
-    messenger.currentState
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 3)));
-  }
+  void _toast(String text) => toasts.show(text, tag: 'friends');
 
   void _onSession() {
     if (session.status == SessionStatus.signedIn) {

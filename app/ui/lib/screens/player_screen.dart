@@ -14,6 +14,7 @@ import '../watch_together/watch_together.dart';
 import '../watch_together/watch_together_sheet.dart';
 import '../widgets/voice_button.dart';
 import 'media_info_panel.dart';
+import '../widgets/toasts.dart';
 
 const _window = MethodChannel('plezy/window');
 
@@ -311,14 +312,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final at = Duration(milliseconds: saved.positionMs);
     unawaited(_player.seek(at));
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text('Resumed at ${_fmt(at)}'),
-          action: SnackBarAction(label: 'Start over', onPressed: () => _seekTo(Duration.zero)),
-        ),
-      );
+    toasts.show('Resumed at ${_fmt(at)}', action: 'Start over', onAction: () => _seekTo(Duration.zero), tag: 'player');
   }
 
   Future<void> _saveProgress() async {
@@ -422,9 +416,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _toast(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 3)));
+    toasts.show(text, tag: 'player');
   }
 
   @override

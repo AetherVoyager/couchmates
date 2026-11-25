@@ -11,9 +11,9 @@ import 'theme.dart';
 import 'watch_together/friends.dart';
 import 'watch_together/friends_bubble.dart';
 import 'watch_together/watch_together.dart';
+import 'widgets/toasts.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
-final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class CouchmatesApp extends StatelessWidget {
   const CouchmatesApp({
@@ -49,12 +49,7 @@ class CouchmatesApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           lazy: false,
-          create: (_) => requestUpdatesWithNotices(
-            session: session,
-            settings: settings,
-            messenger: messengerKey,
-            navigator: navigatorKey,
-          ),
+          create: (_) => requestUpdatesWithNotices(session: session, settings: settings, navigator: navigatorKey),
         ),
         ChangeNotifierProvider(
           lazy: false,
@@ -62,12 +57,7 @@ class CouchmatesApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           lazy: false,
-          create: (context) => FriendsLink(
-            session: session,
-            settings: settings,
-            watch: context.read<WatchTogether>(),
-            messenger: messengerKey,
-          ),
+          create: (context) => FriendsLink(session: session, settings: settings, watch: context.read<WatchTogether>()),
         ),
       ],
       child: Consumer<AppSettings>(
@@ -76,8 +66,7 @@ class CouchmatesApp extends StatelessWidget {
           return MaterialApp(
             title: 'Couchmates',
             navigatorKey: navigatorKey,
-            scaffoldMessengerKey: messengerKey,
-            builder: (context, child) => FriendsBubble(child: child ?? const SizedBox.shrink()),
+            builder: (context, child) => ToastHost(child: FriendsBubble(child: child ?? const SizedBox.shrink())),
             debugShowCheckedModeBanner: false,
             theme: themes.light,
             darkTheme: themes.dark,
