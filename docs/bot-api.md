@@ -26,7 +26,8 @@ Every call sends `Authorization: Bearer <token>`. Failures answer with a 4xx sta
 - An update's `status` is `pending`, `approved`, `added` or `declined`. Without `note` the request keeps its note;
   `""` clears it. Notes are cut at 300 characters. Friends see the status and note in the app.
 - A `MediaRequest` is the app API's shape (`core/src/api.rs`, sample `core/contract/media_request.json`):
-  `id`, `kind` (`movie` or `series`), `title_id` (usually the IMDb id), `name`, `year`, `poster`, `status`, `note`,
+  `id`, `kind` (`movie` or `series`), `title_id` (usually the IMDb id), `name`, `year` (the four-digit release
+  year as text, such as `"1999"`; a show's first year; left out when unknown), `poster`, `status`, `note`,
   `requested_by` (display names), `created_at`, `updated_at`.
 - **Shows are requested by episode.** A series request has `season` and `episode` (numbers) and often
   `episode_title`; each episode is its own request with its own id and status, so add and answer them one at a
