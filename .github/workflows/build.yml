@@ -30,7 +30,7 @@ jobs:
     name: Core and Hub tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
@@ -41,7 +41,7 @@ jobs:
     # The tests take a few minutes; a hung test shouldn't hold the release for long.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -79,10 +79,10 @@ jobs:
         shell: pwsh
         working-directory: app/ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache native dependencies (libmpv)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: app/ui/build/windows/x64/_deps
           key: windows-native-x64-${{ hashFiles('app/ui/windows/CMakeLists.txt', 'app/ui/mpv-build.lock.json') }}
@@ -132,7 +132,7 @@ jobs:
             Move-Item $f "$env:GITHUB_WORKSPACE/$f"
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: couchmates-windows-x64
           # On a tag this only hands the files to the release job, which keeps
@@ -152,10 +152,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: couchmates-windows-x64
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             couchmates-windows-setup.exe
