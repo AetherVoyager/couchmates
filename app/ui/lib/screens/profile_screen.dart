@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:couchmates_core/couchmates_core.dart';
 import 'package:file_picker/file_picker.dart';
@@ -172,15 +171,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _choosePhoto() async {
-    final result = await FilePicker.pickFiles(
-      dialogTitle: 'Choose a profile picture',
-      type: FileType.image,
-      withData: true,
-    );
-    final file = result?.files.singleOrNull;
+    final file = await FilePicker.pickFile(dialogTitle: 'Choose a profile picture', type: FileType.image);
     if (file == null) return;
-    final bytes = file.bytes ?? (file.path == null ? null : await File(file.path!).readAsBytes());
-    if (bytes == null || !mounted) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
     await _photo((s) => s.setPhoto(bytes), 'Profile picture changed.');
   }
 

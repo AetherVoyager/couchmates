@@ -26,8 +26,8 @@ dependencies:
   uuid: ^4.4.0
   window_manager: ^0.5.1
   logger: ^2.7.0
-  package_info_plus: ^9.0.0
-  device_info_plus: ^12.3.0
+  package_info_plus: ^10.2.2
+  device_info_plus: ^13.3.0
   provider: ^6.1.2
   flex_color_picker: ^3.8.0
   qr_flutter: ^4.1.0
@@ -44,15 +44,13 @@ dependencies:
       url: https://github.com/edde746/media_controls
       ref: a27208e641790029ac54d825b97508575caee1a7
   rate_limiter: ^1.0.0
-  wakelock_plus:
-    path: packages/wakelock_plus
   path_provider: ^2.1.0
   path: ^1.9.0
   universal_gamepad: ^1.5.7
   drift: ^2.31.0
   crypto: ^3.0.7
   cryptography: ^2.9.0
-  file_picker: ^11.0.2
+  file_picker: ^13.4.1
   saf_util:
     # Vendored 3.1.0: fixes upstream's duplicate MethodChannel result.
     path: packages/saf_util
