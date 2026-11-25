@@ -3,13 +3,11 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  auto_updater_windows
   connectivity_plus
   emoji_picker_flutter
   flutter_webrtc
   livekit_client
   os_media_controls
-  universal_gamepad
   url_launcher_windows
 )
 
