@@ -9,7 +9,7 @@ import auto_updater_macos
 import connectivity_plus
 import device_info_plus
 import emoji_picker_flutter
-import file_picker
+import file_picker_darwin
 import flutter_webrtc
 import in_app_purchase_storekit
 import livekit_client
@@ -20,7 +20,6 @@ import sentry_flutter
 import shared_preferences_foundation
 import universal_gamepad
 import url_launcher_macos
-import wakelock_plus
 import window_manager
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
@@ -39,6 +38,5 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
   GamepadPlugin.register(with: registry.registrar(forPlugin: "GamepadPlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
-  WakelockPlusMacosPlugin.register(with: registry.registrar(forPlugin: "WakelockPlusMacosPlugin"))
   WindowManagerPlugin.register(with: registry.registrar(forPlugin: "WindowManagerPlugin"))
 }
