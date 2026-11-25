@@ -132,7 +132,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"metas": [{k: v for k, v in m.items() if k != "videos"} for m in items]})
         if path.startswith("meta/"):
             meta_id = path.split("/")[2].removesuffix(".json")
-            return self.send_json({"meta": FAKE_LIBRARY[meta_id]} if meta_id in FAKE_LIBRARY else {"meta": None})
+            if meta_id in FAKE_LIBRARY:
+                return self.send_json({"meta": FAKE_LIBRARY[meta_id]})
+            # Like the real server: details for titles it doesn't have too (from TMDB or Cinemeta).
+            if meta_id.startswith("tt"):
+                kind = path.split("/")[1]
+                videos = [{"id": f"{meta_id}:1:{e}", "title": f"Episode {e}", "season": 1, "episode": e}
+                          for e in (1, 2)] if kind == "series" else []
+                return self.send_json({"meta": {"id": meta_id, "type": kind, "name": "Somewhere else",
+                                                "imdb_id": meta_id, "videos": videos}})
+            return self.send_json({"meta": {}})
         if path.startswith("stream/"):
             stream_id = path.split("/")[2].removesuffix(".json")
             url = FAKE_STREAMS.get(stream_id)

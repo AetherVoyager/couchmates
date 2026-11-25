@@ -50,6 +50,16 @@ http.Client fakeServers(List<http.Request> sent) => MockClient((request) async {
       }),
       // A show in the library with one of its two episodes.
       '/meta/series/tt5.json' => json(_show('tt5', [_ep('tt5', 1, 1)])),
+      '/stream/series/tt5:1:1.json' => json({
+        'streams': [
+          {
+            'name': '1080p',
+            'url': 'https://tg.example/dl/1/video.mkv',
+            'size_bytes': 5,
+            'behaviorHints': {'bingeGroup': 'g'},
+          },
+        ],
+      }),
       _ => http.Response('{"detail":"Not Found"}', 404),
     };
   }

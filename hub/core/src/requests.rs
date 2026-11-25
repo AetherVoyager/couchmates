@@ -258,6 +258,36 @@ pub fn meta_episodes(body: &serde_json::Value) -> std::collections::HashSet<(u64
     videos.into_iter().flatten().filter_map(|v| Some((number(v.get("season"))?, number(v.get("episode"))?))).collect()
 }
 
+/// Whether Telegram-Stremio's answer to `/stream/<kind>/<id>.json` has a file to play. Its notices ("Limit
+/// Reached", the donation link) come as streams too, without a size or a binge group; the app tells them apart
+/// the same way.
+pub fn streams_playable(body: &serde_json::Value) -> bool {
+    let streams = body.get("streams").and_then(serde_json::Value::as_array);
+    streams.into_iter().flatten().any(|s| {
+        let url = s.get("url").and_then(serde_json::Value::as_str).unwrap_or("");
+        let hints = s.get("behaviorHints");
+        (url.starts_with("https://") || url.starts_with("http://"))
+            && (s.get("size_bytes").is_some_and(|v| !v.is_null())
+                || hints.and_then(|h| h.get("bingeGroup")).is_some_and(|v| !v.is_null()))
+    })
+}
+
+/// The stream id that tells whether a meta answer is the library's own: the movie itself, or a show's first
+/// episode. Telegram-Stremio answers `/meta/` for titles it doesn't have too (with TMDB's or Cinemeta's
+/// details, so Stremio can show them), so a real meta alone doesn't mean the title is there.
+pub fn probe_id(kind: &str, title_id: &str, body: &serde_json::Value) -> Option<String> {
+    if kind != "series" {
+        return Some(title_id.to_string());
+    }
+    let videos = body.get("meta").and_then(|m| m.get("videos")).and_then(serde_json::Value::as_array)?;
+    videos.iter().find_map(|v| {
+        if let Some(id) = v.get("id").and_then(serde_json::Value::as_str).filter(|id| !id.is_empty()) {
+            return Some(id.to_string());
+        }
+        Some(format!("{title_id}:{}:{}", number(v.get("season"))?, number(v.get("episode"))?))
+    })
+}
+
 /// Whether [row] is answered by a meta answer: the title is there, and for an episode, that episode too.
 pub fn row_found(
     row: &MediaRequestRow,
@@ -300,6 +330,17 @@ pub async fn sync_with_library(store: &Store) -> Result<Vec<String>> {
         let Ok((200, body)) = crate::addons::get_json(&url).await else {
             continue;
         };
+        if !meta_found(&body) {
+            continue;
+        }
+        let Some(probe) = probe_id(&kind, &title_id, &body) else {
+            continue;
+        };
+        let url = format!("{base}/stream/{kind}/{}.json", crate::addons::path_segment(&probe));
+        match crate::addons::get_json(&url).await {
+            Ok((200, streams)) if streams_playable(&streams) => {}
+            _ => continue,
+        }
         let episodes = meta_episodes(&body);
         for r in rows {
             if row_found(&r, &body, &episodes) {
@@ -394,6 +435,36 @@ mod tests {
         assert!(clean(ask("movie", "tt1/../x", "x", None)).is_err());
         assert!(clean(ask("movie", "tt1", "   ", None)).is_err());
         assert_eq!(clean(ask("movie", "tt1", &"n".repeat(500), None)).unwrap().name.len(), MAX_NAME);
+    }
+
+    #[test]
+    fn only_a_file_counts_as_playable() {
+        let file = serde_json::json!({"streams": [
+            {"name": "1080p", "url": "https://tg.example/dl/t/1/video.mkv", "size_bytes": 5,
+             "behaviorHints": {"bingeGroup": "g"}},
+            {"name": "Support", "externalUrl": "https://donate.example"}]});
+        assert!(streams_playable(&file));
+        let donation = serde_json::json!({"streams": [{"name": "Support", "externalUrl": "https://donate.example"}]});
+        assert!(!streams_playable(&donation));
+        let limit = serde_json::json!({"streams": [{"name": "Limit Reached", "url": "tg://user?id=1"}]});
+        assert!(!streams_playable(&limit));
+        let expired = serde_json::json!({"streams": [{"name": "Plan Expired", "url": "https://t.me/bot"}]});
+        assert!(!streams_playable(&expired));
+        assert!(!streams_playable(&serde_json::json!({"streams": []})));
+        assert!(!streams_playable(&serde_json::json!({})));
+    }
+
+    #[test]
+    fn the_probe_is_the_movie_or_a_shows_first_episode() {
+        let movie = serde_json::json!({"meta": {"id": "tt1"}});
+        assert_eq!(probe_id("movie", "tt1", &movie).as_deref(), Some("tt1"));
+        let show = serde_json::json!({"meta": {"id": "tt2", "videos": [
+            {"season": 1, "episode": 1}, {"id": "tt2:1:2", "season": 1, "episode": 2}]}});
+        assert_eq!(probe_id("series", "tt2", &show).as_deref(), Some("tt2:1:1"));
+        let named =
+            serde_json::json!({"meta": {"id": "tt2", "videos": [{"id": "tt2:3:4", "season": 3, "episode": 4}]}});
+        assert_eq!(probe_id("series", "tt2", &named).as_deref(), Some("tt2:3:4"));
+        assert_eq!(probe_id("series", "tt2", &serde_json::json!({"meta": {"id": "tt2", "videos": []}})), None);
     }
 
     #[test]

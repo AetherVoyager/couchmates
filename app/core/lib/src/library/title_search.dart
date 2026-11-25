@@ -94,7 +94,7 @@ class TitleSearch {
 
   Future<StremioMeta?> _inLibrary(StremioMeta item) async {
     final byId = await library!.meta(item.type, item.id);
-    if (byId != null) return byId;
+    if (byId != null && byId.id.isNotEmpty && await _libraryHasFile(byId)) return byId;
     // A library without IMDb ids: the same title by name and year.
     if (item.name.trim().isEmpty) return null;
     final List<StremioMeta> hits;
@@ -107,6 +107,27 @@ class TitleSearch {
     final match = hits.where((m) => _nameKey(m) == key).firstOrNull;
     if (match == null) return null;
     return await library!.meta(match.type, match.id) ?? match;
+  }
+
+  /// Whether the library has a file for [meta] (a show: its first episode). Telegram-Stremio answers for titles
+  /// it doesn't have too, with TMDB's or Cinemeta's details, so a meta alone doesn't mean the title is there:
+  /// that showed Play on every title of an add-on's row. A notice such as "Limit Reached" counts as there, and
+  /// so does an answer that fails, so Play can explain what's wrong.
+  Future<bool> _libraryHasFile(StremioMeta meta) async {
+    final String id;
+    if (meta.isSeries) {
+      final first = meta.videos.firstOrNull;
+      if (first == null) return false;
+      id = first.id;
+    } else {
+      id = meta.id;
+    }
+    try {
+      final streams = await library!.streams(meta.type, id);
+      return streams.streams.isNotEmpty || streams.notices.isNotEmpty;
+    } catch (_) {
+      return true;
+    }
   }
 
   /// [own]'s full episode list from the other catalogs, or null when none knows it.

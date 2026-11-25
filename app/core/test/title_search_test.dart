@@ -115,10 +115,27 @@ void main() {
     }
 
     const item = StremioMeta(id: 'tt5', type: 'series', name: 'The Show', releaseInfo: '2020');
+    // What Telegram-Stremio sends for a file it has, and for one it doesn't (only its donation link).
+    final file = {
+      'streams': [
+        {
+          'name': '1080p',
+          'url': 'https://tg.example/dl/tok/1/video.mkv',
+          'size_bytes': 5,
+          'behaviorHints': {'bingeGroup': 'g'},
+        },
+      ],
+    };
+    final nothing = {
+      'streams': [
+        {'name': 'Support', 'externalUrl': 'https://donate.example'},
+      ],
+    };
 
     test('a show the library has lists the released episodes it lacks', () async {
       final search = searchOn({
         '$lib/meta/series/tt5.json': show(videos: [ep(1, 1), ep(1, 3)]),
+        '$lib/stream/series/tt5:1:1.json': file,
         '$cine/meta/series/tt5.json': show(
           videos: [
             ep(1, 1),
@@ -144,6 +161,32 @@ void main() {
       expect(found.inLibrary || found.playable, isFalse);
       expect(found.full?.videos.length, 2);
       expect(found.missing(), isEmpty);
+    });
+
+    test("the library's details for a title it has no file for don't make it the library's", () async {
+      // Telegram-Stremio answers /meta/ for any title, with TMDB's or Cinemeta's details.
+      final search = searchOn({
+        '$lib/meta/series/tt5.json': show(videos: [ep(1, 1), ep(1, 2)]),
+        '$lib/stream/series/tt5:1:1.json': nothing,
+        '$cine/meta/series/tt5.json': show(videos: [ep(1, 1), ep(1, 2)]),
+        '$lib/meta/movie/tt7.json': {
+          'meta': {'id': 'tt7', 'type': 'movie', 'name': 'Elsewhere', 'videos': <Object>[]},
+        },
+        '$lib/stream/movie/tt7.json': nothing,
+        '$lib/meta/movie/tt8.json': {'meta': <String, Object>{}},
+        '$lib/meta/movie/tt9.json': {
+          'meta': {'id': 'tt9', 'type': 'movie', 'name': 'Here'},
+        },
+        '$lib/stream/movie/tt9.json': file,
+      });
+      final series = await search.lookUp(item);
+      expect(series.inLibrary || series.playable, isFalse);
+      expect(series.full?.videos.length, 2);
+      const movie = StremioMeta(id: 'tt7', type: 'movie', name: 'Elsewhere');
+      expect((await search.lookUp(movie)).playable, isFalse);
+      // A title the token can't see comes back as an empty meta.
+      expect((await search.lookUp(const StremioMeta(id: 'tt8', type: 'movie', name: 'Hidden'))).playable, isFalse);
+      expect((await search.lookUp(const StremioMeta(id: 'tt9', type: 'movie', name: 'Here'))).inLibrary, isTrue);
     });
 
     test('a library without IMDb ids is matched by name and year', () async {
