@@ -453,9 +453,12 @@ class _Actions extends StatelessWidget {
           icon: watched ? Icons.visibility_rounded : Icons.visibility_outlined,
           tooltip: watched ? 'Mark as not watched' : 'Mark as watched',
           selected: watched,
-          onPressed: () => isShow
-              ? progress.setManyWatched(meta, meta.videos, watched: !watched)
-              : progress.setWatched(meta, watched: !watched),
+          onPressed: () {
+            unawaited(context.read<HubSession>().markWatched(meta, watched: !watched));
+            isShow
+                ? progress.setManyWatched(meta, meta.videos, watched: !watched)
+                : progress.setWatched(meta, watched: !watched);
+          },
         ),
         if (isShow)
           _ActionButton(
@@ -521,7 +524,11 @@ class _SeasonWatchedButton extends StatelessWidget {
     if (episodes.isEmpty) return const SizedBox.shrink();
     final all = episodes.every((e) => progress.isWatched(e.id));
     return TextButton.icon(
-      onPressed: () => progress.setManyWatched(meta, episodes, watched: !all),
+      onPressed: () {
+        final season = episodes.first.season;
+        if (season != null) unawaited(context.read<HubSession>().markWatched(meta, season: season, watched: !all));
+        progress.setManyWatched(meta, episodes, watched: !all);
+      },
       style: TextButton.styleFrom(foregroundColor: Cinema.muted),
       icon: Icon(all ? Icons.remove_done_rounded : Icons.done_all_rounded),
       label: Text(all ? 'Mark season not watched' : 'Mark season watched'),
@@ -641,7 +648,10 @@ class _EpisodeTile extends StatelessWidget {
                   tooltip: watched ? 'Mark as not watched' : 'Mark as watched',
                   color: Cinema.muted,
                   icon: Icon(watched ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded),
-                  onPressed: () => progress.setWatched(meta, video: video, watched: !watched),
+                  onPressed: () {
+                    unawaited(context.read<HubSession>().markWatched(meta, video: video, watched: !watched));
+                    progress.setWatched(meta, video: video, watched: !watched);
+                  },
                 ),
             ],
           ),

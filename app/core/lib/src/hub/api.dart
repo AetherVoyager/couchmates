@@ -370,10 +370,12 @@ class ScrobbleRequest {
     this.episode,
   });
 
-  /// `start`, `pause` or `stop`.
+  /// `start`, `pause` or `stop` while playing; `watched` or `unwatched` when
+  /// marked in the app.
   final String action;
 
-  /// `movie` or `episode`.
+  /// `movie` or `episode`; `show` (only to mark) is a whole season when
+  /// [season] is set, else the whole show.
   final String kind;
   final String imdb;
   final int? season;

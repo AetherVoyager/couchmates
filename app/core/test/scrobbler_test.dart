@@ -45,4 +45,16 @@ void main() {
       reason: 'episode without season and number',
     );
   });
+
+  test('marks movies, episodes, seasons and shows', () {
+    const movie = StremioMeta(id: 'tt1375666', type: 'movie', name: 'x');
+    final m = Scrobbler.mark(movie, watched: true)!;
+    expect([m.action, m.kind, m.season, m.episode], ['watched', 'movie', null, null]);
+    final e = Scrobbler.mark(show, video: ep, watched: false)!;
+    expect([e.action, e.kind, e.season, e.episode], ['unwatched', 'episode', 1, 2]);
+    final s = Scrobbler.mark(show, season: 3, watched: true)!;
+    expect([s.kind, s.season, s.episode], ['show', 3, null]);
+    expect(Scrobbler.mark(show, watched: true)!.season, isNull);
+    expect(Scrobbler.mark(const StremioMeta(id: 'kitsu:1', type: 'series', name: 'x'), watched: true), isNull);
+  });
 }

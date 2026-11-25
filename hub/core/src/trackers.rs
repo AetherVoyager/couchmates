@@ -1,5 +1,6 @@
 //! Trakt and Simkl: linking a user's account with a device code (the user
-//! types a short code on the service's site) and scrobbling what they watch.
+//! types a short code on the service's site), scrobbling what they watch, and
+//! adding or removing what they mark watched in the app.
 //! The admin registers Couchmates on each service and saves its keys in Hub
 //! Settings; tokens are kept per user, sealed, and never reach the app.
 
@@ -10,6 +11,10 @@ use worker::{Fetch, Headers, Method, Request, RequestInit, Result};
 use crate::store::{Store, TrackerLink, now};
 
 pub const SERVICES: [&str; 2] = ["trakt", "simkl"];
+
+/// What Couchmates asks Simkl for: without `media:write` its tokens are
+/// read-only and every scrobble gets 403 `insufficient_scope`.
+const SIMKL_SCOPE: &str = "media:read media:write";
 
 /// A service's app keys, from Hub Settings.
 pub struct Keys {
@@ -37,6 +42,37 @@ impl Keys {
 
     fn base(&self) -> &'static str {
         if self.service == "trakt" { "https://api.trakt.tv" } else { "https://api.simkl.com" }
+    }
+
+    /// [path] on the service. Simkl wants the app named on every call.
+    fn url(&self, path: &str) -> String {
+        if self.service == "trakt" {
+            return format!("{}{path}", self.base());
+        }
+        let sep = if path.contains('?') { '&' } else { '?' };
+        format!(
+            "{}{path}{sep}client_id={}&app-name=couchmates&app-version={}",
+            self.base(),
+            form_encode(&self.client_id),
+            env!("CARGO_PKG_VERSION")
+        )
+    }
+
+    /// A form-encoded POST to Simkl's OAuth 2.0 endpoints, which take forms.
+    async fn post_form(&self, path: &str, fields: &[(&str, &str)]) -> std::result::Result<(u16, Value), String> {
+        let h = Headers::new();
+        let set = |k: &str, v: &str| h.set(k, v).map_err(|e| e.to_string());
+        set("content-type", "application/x-www-form-urlencoded")?;
+        set("accept", "application/json")?;
+        set("user-agent", "Couchmates/0.1")?;
+        let body: Vec<String> = fields.iter().map(|(k, v)| format!("{k}={}", form_encode(v))).collect();
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post).with_headers(h).with_body(Some(body.join("&").into()));
+        let req = Request::new_with_init(&format!("{}{path}", self.base()), &init).map_err(|e| e.to_string())?;
+        let mut resp = Fetch::Request(req).send().await.map_err(|e| format!("couldn't reach {}: {e}", self.service))?;
+        let status = resp.status_code();
+        let text = resp.text().await.unwrap_or_default();
+        Ok((status, serde_json::from_str(&text).unwrap_or(Value::Null)))
     }
 
     fn headers(&self, token: Option<&str>) -> Result<Headers> {
@@ -68,7 +104,7 @@ impl Keys {
         if let Some(b) = body {
             init.with_body(Some(b.to_string().into()));
         }
-        let req = Request::new_with_init(&format!("{}{path}", self.base()), &init).map_err(|e| e.to_string())?;
+        let req = Request::new_with_init(&self.url(path), &init).map_err(|e| e.to_string())?;
         let mut resp = Fetch::Request(req).send().await.map_err(|e| format!("couldn't reach {}: {e}", self.service))?;
         let status = resp.status_code();
         let text = resp.text().await.unwrap_or_default();
@@ -83,7 +119,7 @@ impl Keys {
         } else {
             // Simkl's OAuth 2.0 device flow (RFC 8628). Its older `/oauth/pin`
             // answers 400 for client IDs made since Simkl's OAuth 2.0 apps.
-            self.call(Method::Post, "/oauth2/device", None, Some(&json!({ "client_id": self.client_id }))).await?
+            self.post_form("/oauth2/device", &[("client_id", &self.client_id), ("scope", SIMKL_SCOPE)]).await?
         };
         if !(200..300).contains(&status) {
             return Err(format!(
@@ -120,12 +156,12 @@ impl Keys {
                 _ => Poll::Expired,
             });
         }
-        let body = json!({
-            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            "device_code": device_code,
-            "client_id": self.client_id,
-        });
-        let (status, v) = self.call(Method::Post, "/oauth2/token", None, Some(&body)).await?;
+        let fields = [
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+            ("device_code", device_code),
+            ("client_id", self.client_id.as_str()),
+        ];
+        let (status, v) = self.post_form("/oauth2/token", &fields).await?;
         Ok(simkl_poll(status, &v))
     }
 
@@ -142,7 +178,7 @@ impl Keys {
     /// A fresh access token when the current one is about to expire.
     async fn refreshed(&self, link: &TrackerLink) -> Option<Tokens> {
         let refresh = link.refresh_token.as_deref()?;
-        let (path, body) = if self.service == "trakt" {
+        let (status, v) = if self.service == "trakt" {
             let body = json!({
                 "refresh_token": refresh,
                 "client_id": self.client_id,
@@ -150,16 +186,17 @@ impl Keys {
                 "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
                 "grant_type": "refresh_token",
             });
-            ("/oauth/token", body)
+            self.call(Method::Post, "/oauth/token", None, Some(&body)).await.ok()?
         } else {
-            let body = json!({ "refresh_token": refresh, "client_id": self.client_id, "grant_type": "refresh_token" });
-            ("/oauth2/token", body)
+            let fields =
+                [("grant_type", "refresh_token"), ("refresh_token", refresh), ("client_id", self.client_id.as_str())];
+            self.post_form("/oauth2/token", &fields).await.ok()?
         };
-        let (status, v) = self.call(Method::Post, path, None, Some(&body)).await.ok()?;
         (status == 200).then(|| tokens_from(&v))
     }
 
-    /// Sends one scrobble; refreshes the token first when it's about to expire.
+    /// Sends one scrobble, or a mark watched / not watched to the history;
+    /// refreshes the token first when it's about to expire.
     pub async fn scrobble(
         &self,
         store: &Store,
@@ -181,13 +218,18 @@ impl Keys {
                 store.save_tracker_link(user_id, &updated).await.map_err(|e| e.to_string())?;
             }
         }
-        let (status, _) =
-            self.call(Method::Post, &format!("/scrobble/{}", s.action), Some(&token), Some(&scrobble_body(s))).await?;
-        // 409: Trakt already has this scrobble (sent twice); that's fine.
+        let (path, body) = match s.action.as_str() {
+            "watched" => ("/sync/history".to_string(), history_body(s)),
+            "unwatched" => ("/sync/history/remove".to_string(), history_body(s)),
+            action => (format!("/scrobble/{action}"), scrobble_body(s)),
+        };
+        let (status, v) = self.call(Method::Post, &path, Some(&token), Some(&body)).await?;
+        // 409: already scrobbled (sent twice); that's fine.
         if (200..300).contains(&status) || status == 409 {
             Ok(())
         } else {
-            Err(format!("{} answered {status}", self.service))
+            let why = v.get("error").and_then(Value::as_str).unwrap_or("no reason given");
+            Err(format!("{} answered {status} ({why})", self.service))
         }
     }
 }
@@ -248,13 +290,43 @@ pub fn scrobble_body(s: &ScrobbleRequest) -> Value {
     }
 }
 
+/// The history body both services take: a movie, an episode, a whole season
+/// (`show` with a season) or a whole show.
+pub fn history_body(s: &ScrobbleRequest) -> Value {
+    let ids = json!({ "imdb": s.imdb });
+    match (s.kind.as_str(), s.season, s.episode) {
+        ("episode", Some(season), Some(number)) => json!({
+            "shows": [{ "ids": ids, "seasons": [{ "number": season, "episodes": [{ "number": number }] }] }],
+        }),
+        ("show", Some(season), _) => json!({ "shows": [{ "ids": ids, "seasons": [{ "number": season }] }] }),
+        ("show", None, _) => json!({ "shows": [{ "ids": ids }] }),
+        _ => json!({ "movies": [{ "ids": ids }] }),
+    }
+}
+
 /// Whether [s] is something trackers can take.
 pub fn valid_scrobble(s: &ScrobbleRequest) -> bool {
-    matches!(s.action.as_str(), "start" | "pause" | "stop")
+    let history = matches!(s.action.as_str(), "watched" | "unwatched");
+    (history || matches!(s.action.as_str(), "start" | "pause" | "stop"))
         && s.imdb.starts_with("tt")
         && s.imdb[2..].chars().all(|c| c.is_ascii_digit())
         && s.imdb.len() > 2
-        && (s.kind == "movie" || (s.kind == "episode" && s.season.is_some() && s.episode.is_some()))
+        && match s.kind.as_str() {
+            "movie" => true,
+            "episode" => s.season.is_some() && s.episode.is_some(),
+            "show" => history,
+            _ => false,
+        }
+}
+
+/// [v] encoded for a URL query or a form body.
+fn form_encode(v: &str) -> String {
+    v.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -299,6 +371,32 @@ mod tests {
             }
             _ => panic!("expected linked"),
         }
+    }
+
+    #[test]
+    fn history_bodies() {
+        let mark = |kind: &str, season, episode| ScrobbleRequest {
+            action: "watched".into(),
+            ..req(kind, "tt0903747", season, episode)
+        };
+        assert_eq!(history_body(&mark("movie", None, None)), json!({"movies": [{"ids": {"imdb": "tt0903747"}}]}));
+        assert_eq!(
+            history_body(&mark("episode", Some(1), Some(2))),
+            json!({"shows": [{"ids": {"imdb": "tt0903747"}, "seasons": [{"number": 1, "episodes": [{"number": 2}]}]}]})
+        );
+        assert_eq!(
+            history_body(&mark("show", Some(3), None)),
+            json!({"shows": [{"ids": {"imdb": "tt0903747"}, "seasons": [{"number": 3}]}]})
+        );
+        assert_eq!(history_body(&mark("show", None, None)), json!({"shows": [{"ids": {"imdb": "tt0903747"}}]}));
+        assert!(valid_scrobble(&mark("show", None, None)));
+        assert!(!valid_scrobble(&req("show", "tt0903747", None, None)));
+    }
+
+    #[test]
+    fn forms_encode() {
+        assert_eq!(form_encode("media:read media:write"), "media%3Aread%20media%3Awrite");
+        assert_eq!(form_encode("abc-123_x.y~"), "abc-123_x.y~");
     }
 
     #[test]
