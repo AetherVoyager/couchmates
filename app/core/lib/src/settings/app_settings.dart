@@ -86,6 +86,12 @@ abstract final class Settings {
   /// Percent of the default subtitle size.
   static const subtitleSize = Setting<int>('playback.subtitle_size', 100, choices: [70, 85, 100, 120, 140, 170]);
   static const defaultVolume = Setting<int>('playback.volume', 100, choices: [25, 50, 75, 100]);
+
+  /// Start at the volume the player was last left at, instead of [defaultVolume].
+  static const rememberVolume = Setting<bool>('playback.remember_volume', true);
+
+  /// The player's last volume in percent (0 to 100); -1 until it's first changed.
+  static const lastVolume = Setting<int>('playback.last_volume', -1);
   static const resume = Setting<bool>('playback.resume', true);
   static const autoplayNext = Setting<bool>('playback.autoplay_next', true);
 

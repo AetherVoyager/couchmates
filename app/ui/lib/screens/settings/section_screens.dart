@@ -118,8 +118,7 @@ class PlaybackSection extends StatelessWidget {
         SwitchSetting(
           setting: Settings.onlineSubtitles,
           title: 'Find subtitles online',
-          subtitle:
-              'Adds subtitles from OpenSubtitles (or the Hub\'s subtitle add-ons) when the file has none in your language',
+          subtitle: 'Adds subtitles from OpenSubtitles (or the Hub\'s subtitle add-ons) when the file has none in your language',
         ),
         ChoiceSetting<int>(
           setting: Settings.subtitleSize,
@@ -144,9 +143,15 @@ class PlaybackSection extends StatelessWidget {
           title: 'Play the next episode',
           subtitle: 'When an episode ends, starts the next one',
         ),
+        SwitchSetting(
+          setting: Settings.rememberVolume,
+          title: 'Remember the volume',
+          subtitle: 'Starts at the volume you last left the player at',
+        ),
         ChoiceSetting<int>(
           setting: Settings.defaultVolume,
           title: 'Starting volume',
+          subtitle: 'Used when the volume isn\'t remembered',
           choices: [(25, '25%'), (50, '50%'), (75, '75%'), (100, '100%')],
         ),
         SwitchSetting(

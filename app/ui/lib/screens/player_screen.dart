@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:couchmates_core/couchmates_core.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -47,9 +48,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _tracksChosen = false;
   bool _resumeChecked = false;
   bool _endHandled = false;
+
+  /// The chosen volume (0 to 100), kept while muted so unmuting returns to it.
   double _volume = 100;
+  bool _muted = false;
+  Timer? _volumeSave;
   Scrobbler? _scrobbler;
-  double _volumeBeforeMute = 100;
 
   /// The movie is lowered while others talk in voice chat.
   bool _ducked = false;
@@ -97,7 +101,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _watch.voice.addListener(_duck);
     _settings = context.read<AppSettings>();
     _progress = context.read<ProgressStore>();
-    _volume = _settings.get(Settings.defaultVolume).toDouble();
+    final last = _settings.get(Settings.lastVolume);
+    _volume = (_settings.get(Settings.rememberVolume) && last >= 0 ? last : _settings.get(Settings.defaultVolume))
+        .clamp(0, 100)
+        .toDouble();
     _player = mpv.Player(hardwareDecoding: _settings.get(Settings.hardwareDecoding));
     final session = context.read<HubSession>();
     _scrobbler = Scrobbler.forTitle(session.scrobble, meta: _p.meta, video: _p.video);
@@ -381,17 +388,61 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _setVolume(double v) {
-    _volume = v.clamp(0, 100).toDouble();
+  /// Sets the volume; moving it up from silence unmutes. Keys and the
+  /// scroll wheel show a toast, the slider shows its own level.
+  void _setVolume(double v, {bool toast = true}) {
+    final next = v.clamp(0, 100).roundToDouble();
+    setState(() {
+      if (_muted && next > 0 && next != _volume) _muted = false;
+      _volume = next;
+    });
     unawaited(_player.setVolume(_playedVolume));
-    _toast('Volume ${_volume.round()}%');
+    if (toast) _toast(_muted ? 'Muted' : 'Volume ${_volume.round()}%');
+    _rememberVolume();
   }
 
-  /// The volume sent to the player: lowered while others talk.
+  void _toggleMute({bool toast = true}) {
+    setState(() {
+      if (_muted || _volume == 0) {
+        _muted = false;
+        if (_volume == 0) _volume = 50;
+      } else {
+        _muted = true;
+      }
+    });
+    unawaited(_player.setVolume(_playedVolume));
+    if (toast) _toast(_muted ? 'Muted' : 'Volume ${_volume.round()}%');
+  }
+
+  /// Saves the level a moment after it stops changing, so the next video starts there.
+  void _rememberVolume() {
+    _volumeSave?.cancel();
+    _volumeSave = Timer(const Duration(milliseconds: 600), _saveVolume);
+  }
+
+  void _saveVolume() {
+    _volumeSave = null;
+    unawaited(_settings.set(Settings.lastVolume, _volume.round()));
+  }
+
+  void _onScroll(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || event.scrollDelta.dy == 0) return;
+    _setVolume(_volume + (event.scrollDelta.dy < 0 ? 5 : -5));
+    _bump();
+  }
+
+  /// The volume sent to the player: silent when muted, lowered while others talk.
   double get _playedVolume {
+    if (_muted) return 0;
     final duck = _settings.get(Settings.duckMovie);
     return _ducked && duck > 0 ? _volume * (100 - duck) / 100 : _volume;
   }
+
+  IconData get _volumeIcon => _muted || _volume == 0
+      ? Icons.volume_off_rounded
+      : _volume < 50
+      ? Icons.volume_down_rounded
+      : Icons.volume_up_rounded;
 
   /// Lowers the movie as soon as someone talks; brings it back after a
   /// short quiet, so it doesn't pump between words.
@@ -430,6 +481,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _watch.removeListener(_syncRoom);
     _watch.voice.removeListener(_duck);
     _unduck?.cancel();
+    if (_volumeSave != null) {
+      _volumeSave!.cancel();
+      _saveVolume();
+    }
     if (identical(_watch.playing, _p)) _watch.playing = null;
     _friends.playerClosed(_p);
     for (final s in _subs) {
@@ -516,12 +571,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } else if (key == LogicalKeyboardKey.arrowDown) {
       _setVolume(_volume - 5);
     } else if (key == LogicalKeyboardKey.keyM) {
-      if (_volume > 0) {
-        _volumeBeforeMute = _volume;
-        _setVolume(0);
-      } else {
-        _setVolume(_volumeBeforeMute);
-      }
+      _toggleMute();
     } else if (key == LogicalKeyboardKey.keyI) {
       setState(() => _showInfo = !_showInfo);
     } else if (key == LogicalKeyboardKey.keyN) {
@@ -560,47 +610,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
         focusNode: _focus,
         autofocus: true,
         onKeyEvent: _onKey,
-        child: MouseRegion(
-          cursor: _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
-          onHover: (_) => _bump(),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _controlsVisible ? setState(() => _controlsVisible = false) : _bump(),
-            onDoubleTap: _settings.get(Settings.doubleClickFullscreen) ? () => _setFullscreen(!_fullscreen) : null,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                mpv.Video(player: _player, backgroundColor: Colors.transparent),
-                if (!_started || _error != null) const ColoredBox(color: Colors.black),
-                if (_buffering && _error == null) const Center(child: CircularProgressIndicator()),
-                if (_error != null) Center(child: _Bubble(text: _error!)),
-                if (mismatch != null)
-                  Align(
-                    alignment: Alignment.topCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 80),
-                      child: _Bubble(
-                        text:
-                            "Your copy is ${(mismatch.deltaMs.abs() / 1000).round()} s ${mismatch.deltaMs > 0 ? 'longer' : 'shorter'} than the room's. Play it anyway?",
-                        actions: [
-                          TextButton(onPressed: room!.declineMismatch, child: const Text('No')),
-                          FilledButton(onPressed: room.acceptMismatch, child: const Text('Play')),
-                        ],
+        child: Listener(
+          onPointerSignal: _onScroll,
+          child: MouseRegion(
+            cursor: _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
+            onHover: (_) => _bump(),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _controlsVisible ? setState(() => _controlsVisible = false) : _bump(),
+              onDoubleTap: _settings.get(Settings.doubleClickFullscreen) ? () => _setFullscreen(!_fullscreen) : null,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  mpv.Video(player: _player, backgroundColor: Colors.transparent),
+                  if (!_started || _error != null) const ColoredBox(color: Colors.black),
+                  if (_buffering && _error == null) const Center(child: CircularProgressIndicator()),
+                  if (_error != null) Center(child: _Bubble(text: _error!)),
+                  if (mismatch != null)
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 80),
+                        child: _Bubble(
+                          text:
+                              "Your copy is ${(mismatch.deltaMs.abs() / 1000).round()} s ${mismatch.deltaMs > 0 ? 'longer' : 'shorter'} than the room's. Play it anyway?",
+                          actions: [
+                            TextButton(onPressed: room!.declineMismatch, child: const Text('No')),
+                            FilledButton(onPressed: room.acceptMismatch, child: const Text('Play')),
+                          ],
+                        ),
                       ),
                     ),
+                  if (_showInfo)
+                    Positioned(
+                      top: 72,
+                      right: 16,
+                      child: MediaInfoPanel(player: _player, onClose: () => setState(() => _showInfo = false)),
+                    ),
+                  AnimatedOpacity(
+                    opacity: _controlsVisible ? 1 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: IgnorePointer(ignoring: !_controlsVisible, child: _controls(context, watch)),
                   ),
-                if (_showInfo)
-                  Positioned(
-                    top: 72,
-                    right: 16,
-                    child: MediaInfoPanel(player: _player, onClose: () => setState(() => _showInfo = false)),
-                  ),
-                AnimatedOpacity(
-                  opacity: _controlsVisible ? 1 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(ignoring: !_controlsVisible, child: _controls(context, watch)),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -715,6 +768,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
                         onPressed: () => _playNext(_nextEpisode!),
                       ),
+                    const SizedBox(width: 4),
+                    _volumeControl(),
                     const Spacer(),
                     _trackMenu(
                       icon: Icons.audiotrack_outlined,
@@ -778,6 +833,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Mute button and slider. The slider shows the chosen level even while
+  /// muted (dimmed), so unmuting returns to it.
+  Widget _volumeControl() {
+    final level = _muted ? 0.0 : _volume;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: _muted || _volume == 0 ? 'Unmute (M)' : 'Mute (M)',
+          icon: Icon(_volumeIcon, color: Colors.white),
+          onPressed: () => _toggleMute(toast: false),
+        ),
+        SizedBox(
+          width: 120,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              inactiveTrackColor: Colors.white24,
+            ),
+            child: Slider(
+              value: level,
+              max: 100,
+              label: '${level.round()}%',
+              semanticFormatterCallback: (v) => 'Volume ${v.round()}%',
+              onChangeStart: (_) => _hideTimer?.cancel(),
+              onChanged: (v) => _setVolume(v, toast: false),
+              onChangeEnd: (_) => _scheduleHide(),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 40,
+          child: Text(
+            '${level.round()}%',
+            style: const TextStyle(color: Colors.white70, fontSize: 12, fontFeatures: [FontFeature.tabularFigures()]),
           ),
         ),
       ],
