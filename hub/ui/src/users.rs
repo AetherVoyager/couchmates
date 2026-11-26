@@ -9,19 +9,35 @@ use crate::layout::{Flash, ago, layout, limit};
 
 fn user_form(user: Option<&User>) -> Markup {
     html! {
-        label for="name" { "Display name" }
-        input #name type="text" name="name" required maxlength="60" value=[user.map(|u| u.name.as_str())];
-        label for="username" { "Username (for signing in to the app)" }
-        input #username type="text" name="username" required minlength="3" maxlength="32" autocomplete="off"
-            autocapitalize="none" spellcheck="false" value=[user.and_then(|u| u.username.as_deref())];
-        @if user.is_none() {
-            label for="password" { "Password (leave blank to generate one)" }
-            input #password type="text" name="password" autocomplete="off" spellcheck="false";
+        div.form-grid {
+            div {
+                label for="name" { "Display name" }
+                input #name type="text" name="name" required maxlength="60" value=[user.map(|u| u.name.as_str())];
+            }
+            div {
+                label for="username" { "Username" }
+                input #username type="text" name="username" required minlength="3" maxlength="32" autocomplete="off"
+                    autocapitalize="none" spellcheck="false" value=[user.and_then(|u| u.username.as_deref())];
+                div.hint { "For signing in to the app." }
+            }
+            @if user.is_none() {
+                div {
+                    label for="password" { "Password" }
+                    input #password type="text" name="password" autocomplete="off" spellcheck="false";
+                    div.hint { "Leave blank to generate one." }
+                }
+            }
+            div {
+                label for="daily" { "Daily data limit (GB)" }
+                input #daily type="number" name="daily_limit_gb" min="0" step="0.5" value=(user.map_or(0.0, |u| u.daily_limit_gb));
+                div.hint { "0 means no limit." }
+            }
+            div {
+                label for="monthly" { "Monthly data limit (GB)" }
+                input #monthly type="number" name="monthly_limit_gb" min="0" step="1" value=(user.map_or(0.0, |u| u.monthly_limit_gb));
+                div.hint { "0 means no limit." }
+            }
         }
-        label for="daily" { "Daily data limit (GB, 0 = none)" }
-        input #daily type="number" name="daily_limit_gb" min="0" step="0.5" value=(user.map_or(0.0, |u| u.daily_limit_gb));
-        label for="monthly" { "Monthly data limit (GB, 0 = none)" }
-        input #monthly type="number" name="monthly_limit_gb" min="0" step="1" value=(user.map_or(0.0, |u| u.monthly_limit_gb));
     }
 }
 

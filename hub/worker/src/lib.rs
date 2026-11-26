@@ -99,6 +99,9 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
     }
 
     match (method.clone(), path.as_str()) {
+        (Method::Get, couchmates_hub_ui::layout::HEADING_FONT_PATH) => {
+            return web::font(couchmates_hub_ui::layout::HEADING_FONT);
+        }
         (Method::Get, "/login") => return admin::login_page(),
         (Method::Post, "/login") => return admin::login(req, env, &store).await,
         (Method::Post, "/logout") => return admin::logout(&req, &store).await,

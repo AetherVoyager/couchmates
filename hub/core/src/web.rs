@@ -46,12 +46,21 @@ pub fn same_origin(req: &Request) -> bool {
 fn security_headers(headers: &Headers) -> Result<()> {
     headers.set(
         "content-security-policy",
-        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
     )?;
     headers.set("x-content-type-options", "nosniff")?;
     headers.set("referrer-policy", "same-origin")?;
     headers.set("cache-control", "no-store")?;
     Ok(())
+}
+
+/// A static font file, cached for a year (its name changes when it does).
+pub fn font(bytes: &[u8]) -> Result<Response> {
+    let headers = Headers::new();
+    headers.set("content-type", "font/woff2")?;
+    headers.set("cache-control", "public, max-age=31536000, immutable")?;
+    headers.set("x-content-type-options", "nosniff")?;
+    Ok(Response::from_bytes(bytes.to_vec())?.with_headers(headers))
 }
 
 pub fn html(page: String) -> Result<Response> {

@@ -80,8 +80,8 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
             }
             div.card {
                 div.label { "Library" }
-                div.stat { (num(system, "movies").unwrap_or(0.0)) " · " (num(system, "tv_shows").unwrap_or(0.0)) }
-                div.label { "movies · shows" }
+                div.stat { (num(system, "movies").unwrap_or(0.0)) }
+                div.label { "movies and " (num(system, "tv_shows").unwrap_or(0.0)) " shows" }
             }
         }
         div.card {
