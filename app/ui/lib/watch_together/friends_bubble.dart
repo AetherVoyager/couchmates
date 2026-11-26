@@ -10,6 +10,7 @@ import '../chat/verified_name.dart';
 import '../widgets/person_avatar.dart';
 import '../widgets/poster.dart';
 import 'friends.dart';
+import 'watch_together.dart';
 
 /// The floating bubble in the bottom-right corner over every screen: who's
 /// watching what, and asking to join. Tapping it opens a panel above it.
@@ -598,6 +599,14 @@ class _JoinButton extends StatelessWidget {
       padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12)),
       textStyle: WidgetStatePropertyAll(Theme.of(context).textTheme.labelMedium),
     );
+    if (_inMyParty(context.watch<WatchTogether>().room)) {
+      return FilledButton.tonalIcon(
+        style: small,
+        onPressed: null,
+        icon: const Icon(Icons.groups_rounded, size: 14),
+        label: const Text('In your party'),
+      );
+    }
     if (busy || request?.accepted == true) {
       return FilledButton.tonalIcon(
         style: small,
@@ -620,6 +629,15 @@ class _JoinButton extends StatelessWidget {
       icon: const Icon(Icons.login_rounded, size: 14),
       label: Text(request?.declined == true ? 'Ask again' : 'Ask to join'),
     );
+  }
+
+  /// [friend] is in the watch party this user is in. The room knows people
+  /// by the name they joined with, which is their Couchmates name.
+  bool _inMyParty(WatchRoom? room) {
+    if (room == null || !room.inRoom) return false;
+    String key(String name) => name.trim().toLowerCase();
+    final name = key(friend.person.name);
+    return room.people.any((p) => p.peerId != room.state.peerId && key(p.name) == name);
   }
 }
 
