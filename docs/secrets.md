@@ -37,6 +37,7 @@ For local development, `hub/.dev.vars` holds test values for both (copy `hub/.de
 | Trakt client ID and secret | trakt.tv → Settings → Your API Apps → New application |
 | Simkl client ID | simkl.com → Settings → Developer → New app |
 | TMDB key or read access token | themoviedb.org → Settings → API |
+| OpenSubtitles API key, username and password | opensubtitles.com → your profile → API consumers → New consumer. The username and password are an ordinary (free or VIP) OpenSubtitles account; the Hub signs in with them for its daily download allowance |
 | Add-on links (Add-ons page) | The add-on's own site. Configured add-ons can carry keys in their link; they're sent to signed-in apps, which call the add-on |
 | Authenticator (2FA) | Made by the Hub on first sign-in; scan its QR code. Lost phone: see the admin guide |
 

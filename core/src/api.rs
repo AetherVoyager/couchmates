@@ -42,6 +42,8 @@
 //! | `POST /api/app/requests` | [`MediaRequestCreate`] | [`MediaRequest`] |
 //! | `POST /api/app/requests/episodes` | [`MediaRequestEpisodes`] | [`MediaRequests`] |
 //! | `POST /api/app/requests/cancel` | [`MediaRequestCancel`] | [`OkResponse`] |
+//! | `POST /api/app/subtitles/search` | [`SubtitleSearchRequest`] | [`SubtitleSearch`] |
+//! | `POST /api/app/subtitles/download` | [`SubtitleDownloadRequest`] | [`SubtitleDownload`] |
 
 use serde::{Deserialize, Serialize};
 
@@ -82,6 +84,8 @@ pub mod paths {
     pub const REQUESTS: &str = "/api/app/requests";
     pub const REQUESTS_CANCEL: &str = "/api/app/requests/cancel";
     pub const REQUESTS_EPISODES: &str = "/api/app/requests/episodes";
+    pub const SUBTITLES_SEARCH: &str = "/api/app/subtitles/search";
+    pub const SUBTITLES_DOWNLOAD: &str = "/api/app/subtitles/download";
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -901,6 +905,74 @@ pub struct MediaRequestCancel {
     pub id: String,
 }
 
+/// A subtitle search on OpenSubtitles through the Hub, which holds the API
+/// key. Any mix of fields works; the Hub sends what it gets.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubtitleSearchRequest {
+    /// The movie's IMDb id, or the show's for an episode (`tt0903747`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imdb: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<u32>,
+    /// Words to search for: a title, or a file's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// Two-letter codes (`en`, `ml`), or OpenSubtitles' own (`pt-BR`). Empty
+    /// for every language.
+    #[serde(default)]
+    pub languages: Vec<String>,
+    /// The file's OpenSubtitles hash (16 hex digits), for exact matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubtitleSearch {
+    /// False when the Hub has no OpenSubtitles key: the app then offers only
+    /// the free OpenSubtitles add-on's list.
+    pub available: bool,
+    pub results: Vec<SubtitleResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubtitleResult {
+    /// What to send to download it.
+    pub file_id: u64,
+    /// As OpenSubtitles sends it: `en`, `pt-BR`, `zh-CN`.
+    pub language: String,
+    /// The release it was made for, such as `Breaking.Bad.S01E02.720p.BluRay`.
+    pub release: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    pub downloads: u64,
+    #[serde(default)]
+    pub hearing_impaired: bool,
+    /// Made by machine or AI translation.
+    #[serde(default)]
+    pub machine_translated: bool,
+    /// Made for this very file (its hash matched), so it's in sync.
+    #[serde(default)]
+    pub hash_match: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubtitleDownloadRequest {
+    pub file_id: u64,
+}
+
+/// Where to fetch the subtitle: a temporary link the player loads directly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubtitleDownload {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    /// Downloads left today on the Hub's OpenSubtitles account, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining: Option<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OkResponse {
     pub ok: bool,
@@ -991,5 +1063,10 @@ mod tests {
         round_trips::<MediaRequestUpdate>(include_str!("../contract/media_request_update.json"));
         round_trips::<BotWebhook>(include_str!("../contract/bot_webhook.json"));
         round_trips::<BotStatus>(include_str!("../contract/bot_status.json"));
+        round_trips::<SubtitleSearchRequest>(include_str!("../contract/subtitle_search_request.json"));
+        round_trips::<SubtitleSearch>(include_str!("../contract/subtitle_search.json"));
+        round_trips::<SubtitleSearch>(include_str!("../contract/subtitle_search_none.json"));
+        round_trips::<SubtitleDownloadRequest>(include_str!("../contract/subtitle_download_request.json"));
+        round_trips::<SubtitleDownload>(include_str!("../contract/subtitle_download.json"));
     }
 }

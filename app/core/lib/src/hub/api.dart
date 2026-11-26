@@ -40,6 +40,8 @@ abstract final class HubPaths {
   static const requests = '/api/app/requests';
   static const requestsCancel = '/api/app/requests/cancel';
   static const requestsEpisodes = '/api/app/requests/episodes';
+  static const subtitlesSearch = '/api/app/subtitles/search';
+  static const subtitlesDownload = '/api/app/subtitles/download';
 }
 
 class LoginRequest {
@@ -1598,4 +1600,132 @@ class MediaRequestCancel {
   factory MediaRequestCancel.fromJson(Json j) => MediaRequestCancel(id: j['id'] as String);
 
   Json toJson() => {'id': id};
+}
+
+/// A subtitle search on OpenSubtitles through the Hub, which holds the API key.
+class SubtitleSearchRequest {
+  const SubtitleSearchRequest({this.imdb, this.season, this.episode, this.query, this.languages = const [], this.hash});
+
+  /// The movie's IMDb id, or the show's for an episode.
+  final String? imdb;
+  final int? season;
+  final int? episode;
+
+  /// Words to search for: a title, or a file's name.
+  final String? query;
+
+  /// Two-letter codes; empty for every language.
+  final List<String> languages;
+
+  /// The file's OpenSubtitles hash (16 hex digits).
+  final String? hash;
+
+  factory SubtitleSearchRequest.fromJson(Json j) => SubtitleSearchRequest(
+    imdb: j['imdb'] as String?,
+    season: j['season'] as int?,
+    episode: j['episode'] as int?,
+    query: j['query'] as String?,
+    languages: [for (final l in j['languages'] as List? ?? const []) l as String],
+    hash: j['hash'] as String?,
+  );
+
+  Json toJson() => {
+    'imdb': ?imdb,
+    'season': ?season,
+    'episode': ?episode,
+    'query': ?query,
+    'languages': languages,
+    'hash': ?hash,
+  };
+}
+
+class SubtitleSearch {
+  const SubtitleSearch({required this.available, this.results = const []});
+
+  /// False when the Hub has no OpenSubtitles key.
+  final bool available;
+  final List<SubtitleResult> results;
+
+  static const none = SubtitleSearch(available: false);
+
+  factory SubtitleSearch.fromJson(Json j) => SubtitleSearch(
+    available: j['available'] as bool,
+    results: [for (final r in j['results'] as List) SubtitleResult.fromJson(r as Json)],
+  );
+
+  Json toJson() => {'available': available, 'results': results.map((r) => r.toJson()).toList()};
+}
+
+class SubtitleResult {
+  const SubtitleResult({
+    required this.fileId,
+    required this.language,
+    required this.release,
+    this.fileName,
+    this.downloads = 0,
+    this.hearingImpaired = false,
+    this.machineTranslated = false,
+    this.hashMatch = false,
+  });
+
+  final int fileId;
+
+  /// As OpenSubtitles sends it: `en`, `pt-BR`.
+  final String language;
+  final String release;
+  final String? fileName;
+  final int downloads;
+  final bool hearingImpaired;
+  final bool machineTranslated;
+
+  /// Made for this very file, so it's in sync.
+  final bool hashMatch;
+
+  factory SubtitleResult.fromJson(Json j) => SubtitleResult(
+    fileId: j['file_id'] as int,
+    language: j['language'] as String,
+    release: j['release'] as String,
+    fileName: j['file_name'] as String?,
+    downloads: j['downloads'] as int,
+    hearingImpaired: j['hearing_impaired'] as bool? ?? false,
+    machineTranslated: j['machine_translated'] as bool? ?? false,
+    hashMatch: j['hash_match'] as bool? ?? false,
+  );
+
+  Json toJson() => {
+    'file_id': fileId,
+    'language': language,
+    'release': release,
+    'file_name': ?fileName,
+    'downloads': downloads,
+    'hearing_impaired': hearingImpaired,
+    'machine_translated': machineTranslated,
+    'hash_match': hashMatch,
+  };
+}
+
+class SubtitleDownloadRequest {
+  const SubtitleDownloadRequest({required this.fileId});
+
+  final int fileId;
+
+  factory SubtitleDownloadRequest.fromJson(Json j) => SubtitleDownloadRequest(fileId: j['file_id'] as int);
+
+  Json toJson() => {'file_id': fileId};
+}
+
+/// A temporary link to the subtitle, which the player loads directly.
+class SubtitleDownload {
+  const SubtitleDownload({required this.url, this.fileName, this.remaining});
+
+  final String url;
+  final String? fileName;
+
+  /// Downloads left today on the Hub's OpenSubtitles account, when known.
+  final int? remaining;
+
+  factory SubtitleDownload.fromJson(Json j) =>
+      SubtitleDownload(url: j['url'] as String, fileName: j['file_name'] as String?, remaining: j['remaining'] as int?);
+
+  Json toJson() => {'url': url, 'file_name': ?fileName, 'remaining': ?remaining};
 }

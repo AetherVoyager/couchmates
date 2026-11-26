@@ -189,6 +189,15 @@ class HubClient {
   Future<List<FileTrack>?> fileTracks(String key) async =>
       FileTracks.fromJson(await _send('GET', '${HubPaths.tracks}?key=${Uri.encodeQueryComponent(key)}')).tracks;
 
+  /// Searches OpenSubtitles through the Hub.
+  Future<SubtitleSearch> searchSubtitles(SubtitleSearchRequest request) async =>
+      SubtitleSearch.fromJson(await _send('POST', HubPaths.subtitlesSearch, body: request.toJson()));
+
+  /// A temporary link to one subtitle file from [searchSubtitles].
+  Future<SubtitleDownload> downloadSubtitle(int fileId) async => SubtitleDownload.fromJson(
+    await _send('POST', HubPaths.subtitlesDownload, body: SubtitleDownloadRequest(fileId: fileId).toJson()),
+  );
+
   /// Shares a file's tracks with everyone on this Hub.
   Future<void> saveFileTracks(String key, List<FileTrack> tracks) async {
     await _send(

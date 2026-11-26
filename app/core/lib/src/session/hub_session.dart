@@ -240,6 +240,23 @@ class HubSession extends ChangeNotifier {
     );
   }
 
+  /// Searches OpenSubtitles through the Hub: [SubtitleSearch.none] when
+  /// signed out or the Hub has no key. Throws [HubException] when the Hub or
+  /// OpenSubtitles fails.
+  Future<SubtitleSearch> searchSubtitles(SubtitleSearchRequest request) async {
+    final hub = _hub;
+    if (hub == null) return SubtitleSearch.none;
+    return hub.searchSubtitles(request);
+  }
+
+  /// A link the player can load for a [SubtitleResult.fileId]. Throws
+  /// [HubException].
+  Future<SubtitleDownload> downloadSubtitle(int fileId) async {
+    final hub = _hub;
+    if (hub == null) throw HubException('Sign in to the Hub first.');
+    return hub.downloadSubtitle(fileId);
+  }
+
   List<MediaRequest> _requests = const [];
   bool _requestsLoaded = false;
 

@@ -81,6 +81,8 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             (Method::Post, "requests") => requests::create(req, &store).await,
             (Method::Post, "requests/cancel") => requests::cancel(req, &store).await,
             (Method::Post, "requests/episodes") => requests::create_episodes(req, &store).await,
+            (Method::Post, "subtitles/search") => api::subtitle_search(req, &store).await,
+            (Method::Post, "subtitles/download") => api::subtitle_download(req, &store).await,
             _ => web::json_error("Not found", 404),
         };
     }
@@ -174,6 +176,7 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         (Method::Post, ["settings", "updates"]) => admin::save_updates(req, &store).await,
         (Method::Post, ["settings", "trackers"]) => admin::save_trackers(req, &store).await,
         (Method::Post, ["settings", "tmdb"]) => admin::save_tmdb(req, &store).await,
+        (Method::Post, ["settings", "subtitles"]) => admin::save_subtitles(req, &store).await,
         (Method::Post, ["settings", "chat"]) => admin::save_chat(req, &store).await,
         (Method::Post, ["settings", "tracearr", action]) => {
             let action = action.to_string();

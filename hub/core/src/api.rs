@@ -4,8 +4,9 @@
 use couchmates_core::api::{
     AddonInfo, AppConfig, DeviceInfo, DeviceSignOut, ExtraAddon, FileTrack, FileTracks, FileTracksUpload, LoginRequest,
     LoginResponse, OkResponse, PasswordChangeRequest, Profile, ProfilePhotoUpload, ProfileUpdate, ScrobbleRequest,
-    SignedInDevice, TrackerLinkPoll, TrackerLinkStart, TrackerRequest, TrackerStatus, TrackersResponse, UpdateDownload,
-    UpdateDownloadRequest, UpdateInfo, UserInfo, VoiceInfo, VoiceTokenRequest, VoiceTokenResponse,
+    SignedInDevice, SubtitleDownloadRequest, SubtitleSearch, SubtitleSearchRequest, TrackerLinkPoll, TrackerLinkStart,
+    TrackerRequest, TrackerStatus, TrackersResponse, UpdateDownload, UpdateDownloadRequest, UpdateInfo, UserInfo,
+    VoiceInfo, VoiceTokenRequest, VoiceTokenResponse,
 };
 use couchmates_core::rules::room_for_watch_code;
 use worker::{Request, Response, Result};
@@ -14,6 +15,7 @@ use crate::addons;
 use crate::auth::{hash_password, normalize_username, password_problem, verify_password};
 use crate::crypto::random_token;
 use crate::livekit::LiveKitConfig;
+use crate::opensubtitles::OpenSubtitles;
 use crate::store::TrackerLink;
 use crate::store::{Device, Store, User, now};
 use crate::tgs::TgsConfig;
@@ -432,6 +434,41 @@ pub async fn credits(req: Request, store: &Store) -> Result<Response> {
     let response = web::json(&tmdb.credits(kind, tmdb_id, imdb).await, 200)?;
     response.headers().set("cache-control", "private, max-age=86400")?;
     Ok(response)
+}
+
+/// `POST /api/app/subtitles/search`: OpenSubtitles' subtitles for a title,
+/// or `available: false` when the Hub has no key.
+pub async fn subtitle_search(mut req: Request, store: &Store) -> Result<Response> {
+    if let Err(r) = authenticate(&req, store).await? {
+        return Ok(r);
+    }
+    let Ok(body) = req.json::<SubtitleSearchRequest>().await else {
+        return json_error("Send {\"imdb\": \"tt…\", \"languages\": [\"en\"]} or a query.", 400);
+    };
+    let Some(os) = OpenSubtitles::load(store).await? else {
+        return web::json(&SubtitleSearch { available: false, results: Vec::new() }, 200);
+    };
+    match os.search(&body).await {
+        Ok(results) => web::json(&SubtitleSearch { available: true, results }, 200),
+        Err(e) => json_error(&format!("{e}."), 502),
+    }
+}
+
+/// `POST /api/app/subtitles/download`: a temporary link to one subtitle file.
+pub async fn subtitle_download(mut req: Request, store: &Store) -> Result<Response> {
+    if let Err(r) = authenticate(&req, store).await? {
+        return Ok(r);
+    }
+    let Ok(body) = req.json::<SubtitleDownloadRequest>().await else {
+        return json_error("Send {\"file_id\": 123}.", 400);
+    };
+    let Some(os) = OpenSubtitles::load(store).await? else {
+        return json_error("Subtitle search isn't set up on the Hub.", 409);
+    };
+    match os.download(store, body.file_id).await {
+        Ok(link) => web::json(&link, 200),
+        Err(e) => json_error(&e, 502),
+    }
 }
 
 async fn profile_of(store: &Store, user: &User, current: &Device) -> Result<Profile> {

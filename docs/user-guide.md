@@ -40,6 +40,12 @@ Updates arrive in the app: when a new version is out, home shows **Update now**.
 - **Catalog pages** have a Back arrow; Esc, Alt+← and the mouse's back button also go back.
 - **In the player:** Space pauses, ←/→ skip, ↑/↓ change the volume, M mutes, F goes full screen, N plays the next
   episode, and I shows media info. Audio and subtitle menus are bottom right.
+- **No subtitles, or the wrong ones?** Open the subtitle menu and pick **Search subtitles…**. It lists subtitles
+  in your language from OpenSubtitles, with the ones made for your exact file first (**Matches your file**), and
+  loads the one you pick straight away. Change the language, or type a title if the search finds the wrong thing.
+  **Load from a file** opens an `.srt` or `.ass` from your computer. Searching by name and the full list need the
+  Hub admin to add an OpenSubtitles key; without one you get the free add-on's list. In a watch party everyone
+  picks their own.
 
 ## Watching together
 

@@ -1,0 +1,24 @@
+{
+  "available": true,
+  "results": [
+    {
+      "file_id": 1954677,
+      "language": "en",
+      "release": "Breaking.Bad.S01E02.720p.BluRay.x264-DEMAND",
+      "file_name": "Breaking.Bad.S01E02.720p.BluRay.x264-DEMAND.srt",
+      "downloads": 48211,
+      "hearing_impaired": false,
+      "machine_translated": false,
+      "hash_match": true
+    },
+    {
+      "file_id": 7311042,
+      "language": "ml",
+      "release": "Breaking Bad S01E02",
+      "downloads": 912,
+      "hearing_impaired": true,
+      "machine_translated": true,
+      "hash_match": false
+    }
+  ]
+}

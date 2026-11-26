@@ -26,6 +26,7 @@ Hub's own secrets: [secrets.md](secrets.md).
 | **App updates** | Repository `AetherVoyager/couchmates` and a fine-grained GitHub token: this repo only, Contents read-only | Apps updating themselves |
 | **Trackers** | Trakt client ID + secret, Simkl client ID (register Couchmates on each site; the card links there) | Scrobbling (optional) |
 | **Cast photos (TMDB)** | A free TMDB key or read access token | Cast photos, age ratings, taglines, trailers (optional) |
+| **Subtitles (OpenSubtitles)** | An OpenSubtitles API key, and optionally an OpenSubtitles username and password | **Search subtitles** in the player (optional). Without an account, downloads share the Hub's address and run out after a few a day; a free account gets 20 a day |
 | **Tracearr** | Nothing: press **Make a key**, then add the Hub to Tracearr (below) | Following playback in Tracearr (optional) |
 
 ### Telegram-Stremio settings that matter

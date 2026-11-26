@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:couchmates_core/couchmates_core.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +16,8 @@ import '../watch_together/watch_together.dart';
 import '../watch_together/watch_together_sheet.dart';
 import '../widgets/voice_button.dart';
 import 'media_info_panel.dart';
+import 'settings/setting_tiles.dart' show languageName;
+import 'subtitle_search_panel.dart';
 import '../widgets/toasts.dart';
 
 const _window = MethodChannel('plezy/window');
@@ -78,6 +81,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final _onlineAdded = <String>{};
   String? _autoOnline;
   bool _autoOnlineDone = false;
+
+  /// Search subtitles: whether the panel is open, the file's hash (worked
+  /// out once, when it first opens), and what it loaded.
+  bool _subtitleSearch = false;
+  Future<String?>? _hash;
+  final _searchLoaded = <String>{};
 
   /// The room the player is attached to, if any.
   WatchRoom? _attachedTo;
@@ -235,6 +244,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() {});
       _toast("Couldn't load that subtitle.");
     }
+  }
+
+  void _openSubtitleSearch() {
+    _hash ??= fetchOpenSubtitlesHash(_p);
+    setState(() {
+      _subtitleSearch = true;
+      _showInfo = false;
+    });
+  }
+
+  void _closeSubtitleSearch() {
+    if (!mounted) return;
+    setState(() => _subtitleSearch = false);
+    _focus.requestFocus();
+  }
+
+  /// Loads a subtitle picked in the search: the Hub's after asking it for a
+  /// link, the add-on's from its own. False (with a toast) when it failed.
+  Future<bool> _loadChoice(SubtitleChoice c) async {
+    var url = c.url;
+    int? remaining;
+    if (url == null) {
+      try {
+        final link = await context.read<HubSession>().downloadSubtitle(c.fileId!);
+        url = link.url;
+        remaining = link.remaining;
+      } on HubException catch (e) {
+        _toast(e.message);
+        return false;
+      }
+    }
+    if (!mounted) return false;
+    final title = c.label.length > 60 ? '${c.label.substring(0, 57)}...' : c.label;
+    try {
+      await _player.command(['sub-add', url, 'select', title, c.language]);
+    } catch (_) {
+      _toast("Couldn't load that subtitle.");
+      return false;
+    }
+    if (!mounted) return true;
+    setState(() {
+      _searchLoaded.add(c.key);
+      if (c.url != null) _onlineAdded.add(c.url!);
+    });
+    final name = c.language.length == 2 ? languageName(c.language) : 'The';
+    final left = remaining != null && remaining <= 5
+        ? ' $remaining OpenSubtitles download${remaining == 1 ? '' : 's'} left today.'
+        : '';
+    toasts.success('$name subtitles loaded.$left', tag: 'player');
+    return true;
+  }
+
+  /// A subtitle file from this computer.
+  Future<void> _openSubtitleFile() async {
+    final file = await FilePicker.pickFile(
+      dialogTitle: 'Choose a subtitle file',
+      type: FileType.custom,
+      allowedExtensions: const ['srt', 'ass', 'ssa', 'vtt', 'sub', 'sup'],
+    );
+    final path = file?.path;
+    if (path == null || !mounted) return;
+    try {
+      await _player.command(['sub-add', path, 'select', file!.name]);
+    } catch (_) {
+      _toast("Couldn't load that subtitle file.");
+      return;
+    }
+    toasts.success('Loaded ${file.name}.', tag: 'player');
+    _closeSubtitleSearch();
   }
 
   /// Attaches to the room once the file is open: shares it as host, or
@@ -560,6 +638,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
+    // The search panel takes typing; Esc closes it.
+    if (_subtitleSearch) {
+      if (key != LogicalKeyboardKey.escape) return KeyEventResult.ignored;
+      _closeSubtitleSearch();
+      return KeyEventResult.handled;
+    }
     if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
       _togglePlay();
     } else if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyJ) {
@@ -652,6 +736,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     duration: const Duration(milliseconds: 200),
                     child: IgnorePointer(ignoring: !_controlsVisible, child: _controls(context, watch)),
                   ),
+                  if (_subtitleSearch)
+                    Positioned(
+                      top: 72,
+                      right: 16,
+                      bottom: 104,
+                      child: Align(
+                        alignment: Alignment.topRight,
+                        child: SubtitleSearchPanel(
+                          playable: _p,
+                          addon: _online,
+                          hash: _hash ?? Future.value(),
+                          loaded: _searchLoaded,
+                          onPick: _loadChoice,
+                          onOpenFile: _openSubtitleFile,
+                          onClose: _closeSubtitleSearch,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -817,6 +919,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             selected: false,
                             onTap: () => _addOnline(sub),
                           ),
+                        (label: 'Search subtitles…', selected: false, onTap: () async => _openSubtitleSearch()),
                       ],
                     ),
                     IconButton(

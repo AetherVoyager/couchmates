@@ -40,6 +40,9 @@ const SECRET_KEYS: &[&str] = &[
     "bot_webhook_url",
     "turn_secret",
     "turn_password",
+    "opensubtitles_key",
+    "opensubtitles_password",
+    "opensubtitles_token",
 ];
 
 /// Secret keys an earlier version stored unencrypted. A value that doesn't

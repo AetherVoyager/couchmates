@@ -77,6 +77,11 @@ void main() {
     roundTrips('media_request_episode.json', (j) => MediaRequest.fromJson(j).toJson());
     roundTrips('media_request_create_episode.json', (j) => MediaRequestCreate.fromJson(j).toJson());
     roundTrips('media_request_episodes.json', (j) => MediaRequestEpisodes.fromJson(j).toJson());
+    roundTrips('subtitle_search_request.json', (j) => SubtitleSearchRequest.fromJson(j).toJson());
+    roundTrips('subtitle_search.json', (j) => SubtitleSearch.fromJson(j).toJson());
+    roundTrips('subtitle_search_none.json', (j) => SubtitleSearch.fromJson(j).toJson());
+    roundTrips('subtitle_download_request.json', (j) => SubtitleDownloadRequest.fromJson(j).toJson());
+    roundTrips('subtitle_download.json', (j) => SubtitleDownload.fromJson(j).toJson());
   });
 
   group('rules match the shared contract', () {

@@ -32,6 +32,10 @@ pub struct Settings<'a> {
     pub trakt_has_secret: bool,
     pub simkl_client_id: Option<&'a str>,
     pub tmdb_has_key: bool,
+    /// OpenSubtitles, for the player's subtitle search.
+    pub subtitles_has_key: bool,
+    pub subtitles_username: Option<&'a str>,
+    pub subtitles_has_password: bool,
     /// Tracearr can read the Hub's Jellyfin-style API.
     pub tracearr_has_key: bool,
     /// A Tracearr key just made, shown this once.
@@ -102,6 +106,11 @@ fn sections(s: &Settings) -> Vec<(&'static str, Vec<Section>)> {
     } else {
         sec("cast-photos", "Cast photos", State::Off, "Off")
     };
+    let subtitles = match (s.subtitles_has_key, has(s.subtitles_username)) {
+        (true, true) => sec("subtitles", "Subtitles", State::Ok, "On, with an account"),
+        (true, false) => sec("subtitles", "Subtitles", State::Ok, "On"),
+        _ => sec("subtitles", "Subtitles", State::Off, "Off"),
+    };
     let tracearr = if s.tracearr_has_key {
         sec("tracearr", "Tracearr", State::Ok, "Key set")
     } else {
@@ -117,7 +126,7 @@ fn sections(s: &Settings) -> Vec<(&'static str, Vec<Section>)> {
     vec![
         ("Server", vec![tgs, sec("app-address", "App address", State::None, ""), updates]),
         ("Voice", vec![livekit, relay]),
-        ("Integrations", vec![trackers, tmdb, tracearr]),
+        ("Integrations", vec![trackers, tmdb, subtitles, tracearr]),
         ("Community", vec![chat]),
         ("Security", vec![sec("two-factor", "Two-factor sign-in", State::Ok, "On")]),
     ]
@@ -369,6 +378,40 @@ pub fn page(s: &Settings, flash: Option<&Flash>) -> Markup {
         },
     );
 
+    let subtitles = section(
+        find("subtitles"),
+        html! {
+            p {
+                "Optional. With an OpenSubtitles API key, the player's subtitle menu gets Search subtitles: "
+                "look up any language, or by name, and load one while watching. The key stays on the Hub. "
+                "Get one free at opensubtitles.com → your profile → API consumers."
+            }
+            p {
+                "Without an account, downloads count against the Hub's shared address and run out after a few a day. "
+                "Add an OpenSubtitles account to get its own allowance (20 a day on a free one)."
+            }
+        },
+        html! {
+            form method="post" action="/settings/subtitles#subtitles" {
+                label for="os_key" { "API key" }
+                input #os_key type="password" name="key" autocomplete="new-password";
+                (keep_hint(s.subtitles_has_key, true))
+                div.form-grid {
+                    div {
+                        label for="os_user" { "Username (optional)" }
+                        input #os_user type="text" name="username" autocomplete="off" value=[s.subtitles_username];
+                    }
+                    div {
+                        label for="os_password" { "Password" }
+                        input #os_password type="password" name="password" autocomplete="new-password";
+                        (keep_hint(s.subtitles_has_password, false))
+                    }
+                }
+                div.actions { button type="submit" { "Save and test" } }
+            }
+        },
+    );
+
     let tracearr = section(
         find("tracearr"),
         html! {
@@ -458,7 +501,7 @@ pub fn page(s: &Settings, flash: Option<&Flash>) -> Markup {
                 }
             }
             div.settings-pane {
-                (tgs) (app_address) (updates) (livekit) (relay) (trackers) (tmdb) (tracearr) (chat) (two_factor)
+                (tgs) (app_address) (updates) (livekit) (relay) (trackers) (tmdb) (subtitles) (tracearr) (chat) (two_factor)
             }
         }
     };
@@ -489,6 +532,9 @@ mod tests {
             trakt_has_secret: true,
             simkl_client_id: None,
             tmdb_has_key: false,
+            subtitles_has_key: true,
+            subtitles_username: None,
+            subtitles_has_password: false,
             tracearr_has_key: false,
             tracearr_new_key: None,
             chat_blocked_words: Some("foo, bar\nbaz"),
@@ -506,6 +552,7 @@ mod tests {
             ("/settings/voice", "voice-relay"),
             ("/settings/trackers", "trackers"),
             ("/settings/tmdb", "cast-photos"),
+            ("/settings/subtitles", "subtitles"),
             ("/settings/tracearr/key", "tracearr"),
             ("/settings/chat", "chat"),
             ("/settings/2fa/reset", "two-factor"),

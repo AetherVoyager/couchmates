@@ -14,6 +14,7 @@ use couchmates_hub_core::chat;
 use couchmates_hub_core::crypto::{password_matches, random_token, sha256_hex};
 use couchmates_hub_core::jellyfin;
 use couchmates_hub_core::livekit::{LiveKitConfig, normalize_server_url};
+use couchmates_hub_core::opensubtitles::{self, OpenSubtitles};
 use couchmates_hub_core::store::{Store, now};
 use couchmates_hub_core::tgs::{TgsClient, TgsConfig, TokenUsage, normalize_base_url, token_usages};
 use couchmates_hub_core::tmdb::Tmdb;
@@ -560,6 +561,7 @@ async fn settings_page_with(
     let trakt_client_id = store.setting("trakt_client_id").await?;
     let simkl_client_id = store.setting("simkl_client_id").await?;
     let chat_words = store.setting(chat::BLOCKED_WORDS).await?;
+    let subtitles_username = store.setting(opensubtitles::USERNAME).await?;
     let hub = hub_address(req)?;
     let data = ui::settings::Settings {
         tgs_url: tgs_url.as_deref(),
@@ -580,6 +582,9 @@ async fn settings_page_with(
         trakt_has_secret: store.setting("trakt_client_secret").await?.is_some(),
         simkl_client_id: simkl_client_id.as_deref(),
         tmdb_has_key: store.setting("tmdb_key").await?.is_some(),
+        subtitles_has_key: store.setting(opensubtitles::KEY).await?.is_some(),
+        subtitles_username: subtitles_username.as_deref(),
+        subtitles_has_password: store.setting(opensubtitles::PASSWORD).await?.is_some(),
         tracearr_has_key: store.setting(jellyfin::KEY_HASH).await?.is_some(),
         tracearr_new_key,
         chat_blocked_words: chat_words.as_deref(),
@@ -809,6 +814,54 @@ pub async fn save_tmdb(mut req: Request, store: &Store) -> Result<Response> {
         }
         Err(e) => settings_page(&req, store, Some(Flash::Bad(format!("Not saved: {e}.")))).await,
     }
+}
+
+/// Settings → Subtitles: the OpenSubtitles API key and, optionally, an
+/// account. Blank fields keep what's saved; `remove` as the key turns it off.
+pub async fn save_subtitles(mut req: Request, store: &Store) -> Result<Response> {
+    let form = req.form_data().await?;
+    let field = |k: &str| form.get_field(k).unwrap_or_default().trim().to_string();
+    let (typed_key, username, typed_password) =
+        (field("key"), field("username"), form.get_field("password").unwrap_or_default());
+    if typed_key.eq_ignore_ascii_case("remove") {
+        for k in [opensubtitles::KEY, opensubtitles::USERNAME, opensubtitles::PASSWORD] {
+            store.set_setting(k, None).await?;
+        }
+        opensubtitles::forget_session(store).await?;
+        let flash = Flash::Ok("OpenSubtitles removed. The player offers only the free add-on's subtitles.".into());
+        return settings_page(&req, store, Some(flash)).await;
+    }
+    let key =
+        if typed_key.is_empty() { store.setting(opensubtitles::KEY).await?.unwrap_or_default() } else { typed_key };
+    if key.is_empty() {
+        return settings_page(&req, store, Some(Flash::Bad("Enter your OpenSubtitles API key.".into()))).await;
+    }
+    let password = if username.is_empty() {
+        String::new()
+    } else if typed_password.is_empty() {
+        store.setting(opensubtitles::PASSWORD).await?.unwrap_or_default()
+    } else {
+        typed_password
+    };
+    if !username.is_empty() && password.is_empty() {
+        return settings_page(&req, store, Some(Flash::Bad("Enter the account's password too.".into()))).await;
+    }
+    let account = (!username.is_empty()).then(|| (username.clone(), password.clone()));
+    let os =
+        OpenSubtitles::new(key.clone(), account.as_ref().map(|a| a.0.clone()), account.as_ref().map(|a| a.1.clone()));
+    if let Err(e) = os.test().await {
+        return settings_page(&req, store, Some(Flash::Bad(format!("Not saved: {e}.")))).await;
+    }
+    store.set_setting(opensubtitles::KEY, Some(&key)).await?;
+    store.set_setting(opensubtitles::USERNAME, account.as_ref().map(|a| a.0.as_str())).await?;
+    store.set_setting(opensubtitles::PASSWORD, account.as_ref().map(|a| a.1.as_str())).await?;
+    opensubtitles::forget_session(store).await?;
+    let msg = if account.is_some() {
+        "OpenSubtitles works. Saved: the player can search subtitles, and downloads count against your account."
+    } else {
+        "OpenSubtitles works. Saved: the player can search subtitles. Add an account for more downloads a day."
+    };
+    settings_page(&req, store, Some(Flash::Ok(msg.into()))).await
 }
 
 /// Settings → Tracearr: make or replace the Jellyfin-style API key (shown once), or turn it off.

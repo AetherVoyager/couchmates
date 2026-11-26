@@ -31,6 +31,7 @@ pub mod chat;
 pub mod crypto;
 pub mod jellyfin;
 pub mod livekit;
+pub mod opensubtitles;
 pub mod requests;
 pub mod social;
 pub mod store;
