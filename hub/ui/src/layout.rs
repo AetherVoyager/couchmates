@@ -221,6 +221,9 @@ fn icon(name: &str) -> Markup {
         "/requests" => {
             r#"<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>"#
         }
+        "/voice" => {
+            r#"<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>"#
+        }
         "/settings" => r#"<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>"#,
         _ => r#"<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>"#,
     };
@@ -257,7 +260,7 @@ pub(crate) fn brand() -> Markup {
 const NAV: &[(&str, &[(&str, &str)])] = &[
     ("Main", &[("/", "Overview"), ("/users", "Users"), ("/requests", "Requests")]),
     ("Library", &[("/addons", "Add-ons")]),
-    ("System", &[("/settings", "Settings")]),
+    ("System", &[("/voice", "Voice"), ("/settings", "Settings")]),
 ];
 
 const CHEVRON: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>"#;
