@@ -9,6 +9,7 @@
 //! - [`catalog_check`]: why a user's app would show an empty catalog.
 //! - [`livekit`]: voice join tokens and the room list.
 //! - [`voice`]: LiveKit or direct voice, the TURN relay, direct voice rooms.
+//! - [`voice_usage`]: how much the relay and LiveKit are used, for the Voice page.
 //! - [`api`]: the app API handlers (`/api/app/*`), using the shapes in
 //!   `couchmates-core`.
 //! - [`tmdb`]: cast and crew for details pages.
@@ -39,4 +40,5 @@ pub mod trackers;
 pub mod updates;
 pub mod usage;
 pub mod voice;
+pub mod voice_usage;
 pub mod web;

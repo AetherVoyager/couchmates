@@ -88,9 +88,48 @@ pub fn sign_jwt(secret: &str, claims: &serde_json::Value) -> String {
     format!("{signing_input}.{signature}")
 }
 
+/// The claims of an HS256 [token] signed with [secret]; None when the signature, `nbf` or `exp` is wrong.
+pub fn verify_jwt(secret: &str, token: &str, now: i64) -> Option<serde_json::Value> {
+    let mut parts = token.trim().split('.');
+    let (header, payload, signature) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() {
+        return None;
+    }
+    let head: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(header).ok()?).ok()?;
+    if head.get("alg").and_then(serde_json::Value::as_str) != Some("HS256") {
+        return None;
+    }
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(format!("{header}.{payload}").as_bytes());
+    mac.verify_slice(&URL_SAFE_NO_PAD.decode(signature).ok()?).ok()?;
+    let claims: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()?;
+    let at = |k: &str| claims.get(k).and_then(serde_json::Value::as_i64);
+    // A minute of slack for clock drift.
+    if at("nbf").is_some_and(|nbf| nbf > now + 60) || at("exp").is_some_and(|exp| exp < now - 60) {
+        return None;
+    }
+    Some(claims)
+}
+
+/// Base64 (standard) of the SHA-256 of [bytes], as LiveKit puts in its webhook tokens.
+pub fn sha256_base64(bytes: &[u8]) -> String {
+    STANDARD.encode(Sha256::digest(bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jwts_verify_with_the_right_secret_only() {
+        let token = sign_jwt("s3", &serde_json::json!({"iss": "key", "exp": 2_000, "nbf": 1_000}));
+        assert_eq!(verify_jwt("s3", &token, 1_500).unwrap()["iss"], "key");
+        assert!(verify_jwt("other", &token, 1_500).is_none());
+        assert!(verify_jwt("s3", &token, 3_000).is_none());
+        assert!(verify_jwt("s3", &token, 500).is_none());
+        assert!(verify_jwt("s3", &format!("{token}x"), 1_500).is_none());
+        assert!(verify_jwt("s3", "a.b", 1_500).is_none());
+    }
 
     #[test]
     fn sealer_round_trips_and_rejects_tampering() {

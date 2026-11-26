@@ -6,7 +6,7 @@ mod chat_live;
 
 pub use chat_live::ChatLive;
 
-use couchmates_hub_core::{api, bot, chat, crypto, jellyfin, requests, social, store, tgs, voice, web};
+use couchmates_hub_core::{api, bot, chat, crypto, jellyfin, requests, social, store, tgs, voice, voice_usage, web};
 
 use worker::{Context, Env, Method, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
@@ -28,6 +28,13 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
 
     if path == "/api/health" {
         return web::json(&serde_json::json!({ "ok": true }), 200);
+    }
+
+    // The relay monitor on the coturn server, and LiveKit's webhooks: each with its own signature.
+    match (&method, path.as_str()) {
+        (Method::Post, "/api/relay/report") => return voice_usage::relay_report(req, &store).await,
+        (Method::Post, "/api/livekit/webhook") => return voice_usage::livekit_webhook(req, &store).await,
+        _ => {}
     }
 
     // App API: bearer tokens, no cookies.
@@ -153,6 +160,11 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         (Method::Post, ["bot", action]) => {
             let action = action.to_string();
             admin::bot_action(req, &store, &action).await
+        }
+        (Method::Get, ["voice"]) => admin::voice_page(&req, &store, None).await,
+        (Method::Post, ["voice", action]) => {
+            let action = action.to_string();
+            admin::relay_monitor_action(&req, &store, &action).await
         }
         (Method::Get, ["settings"]) => admin::settings_page(&req, &store, None).await,
         (Method::Post, ["settings", "tgs"]) => admin::save_tgs(req, &store).await,

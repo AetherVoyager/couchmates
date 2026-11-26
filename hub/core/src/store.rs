@@ -347,7 +347,97 @@ pub struct UsagePoint {
     pub total_bytes: f64,
 }
 
+/// One UTC day of relay use, from the relay monitor.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct RelayDay {
+    pub day: String,
+    pub sessions: i64,
+    pub minutes: f64,
+    pub bytes_in: f64,
+    pub bytes_out: f64,
+}
+
+/// One LiveKit participant connection.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct LiveKitSession {
+    pub room: String,
+    pub joined_at: i64,
+    pub left_at: Option<i64>,
+}
+
 impl Store {
+    // -------------------------------------------------------------------------
+    // Voice usage (voice_usage.rs)
+
+    /// Saves the relay monitor's running totals; a figure only ever grows within a day.
+    pub async fn save_relay_days(&self, days: &[RelayDay], at: i64) -> Result<()> {
+        if days.is_empty() {
+            return Ok(());
+        }
+        let statements = days
+            .iter()
+            .map(|d| {
+                self.db
+                    .prepare(
+                        "INSERT INTO relay_days (day, sessions, minutes, bytes_in, bytes_out, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(day) DO UPDATE SET \
+                         sessions = max(sessions, excluded.sessions), minutes = max(minutes, excluded.minutes), \
+                         bytes_in = max(bytes_in, excluded.bytes_in), bytes_out = max(bytes_out, excluded.bytes_out), \
+                         updated_at = excluded.updated_at",
+                    )
+                    .bind(&[s(&d.day), n(d.sessions as f64), n(d.minutes), n(d.bytes_in), n(d.bytes_out), n(at as f64)])
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.db.batch(statements).await?;
+        Ok(())
+    }
+
+    /// Relay days from [from] (`YYYY-MM-DD`) on, oldest first.
+    pub async fn relay_days(&self, from: &str) -> Result<Vec<RelayDay>> {
+        self.all(
+            "SELECT day, sessions, minutes, bytes_in, bytes_out FROM relay_days WHERE day >= ?1 ORDER BY day",
+            &[s(from)],
+        )
+        .await
+    }
+
+    pub async fn livekit_joined(&self, sid: &str, room: &str, identity: &str, at: i64) -> Result<()> {
+        self.run(
+            "INSERT INTO livekit_sessions (sid, room, identity, joined_at) VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT(sid) DO NOTHING",
+            &[s(sid), s(room), s(identity), n(at as f64)],
+        )
+        .await
+    }
+
+    /// Closes [sid]; a leave whose join was missed is recorded as a zero-length connection.
+    pub async fn livekit_left(&self, sid: &str, room: &str, identity: &str, joined_at: i64, at: i64) -> Result<()> {
+        self.run(
+            "INSERT INTO livekit_sessions (sid, room, identity, joined_at, left_at) VALUES (?1, ?2, ?3, ?4, ?5) \
+             ON CONFLICT(sid) DO UPDATE SET left_at = coalesce(left_at, excluded.left_at)",
+            &[s(sid), s(room), s(identity), n(joined_at.min(at) as f64), n(at as f64)],
+        )
+        .await
+    }
+
+    /// The room ended: everyone still in it left at [at].
+    pub async fn livekit_room_finished(&self, room: &str, at: i64) -> Result<()> {
+        self.run(
+            "UPDATE livekit_sessions SET left_at = max(joined_at, ?2) WHERE room = ?1 AND left_at IS NULL",
+            &[s(room), n(at as f64)],
+        )
+        .await
+    }
+
+    /// Connections that overlap [since, now].
+    pub async fn livekit_sessions(&self, since: i64) -> Result<Vec<LiveKitSession>> {
+        self.all(
+            "SELECT room, joined_at, left_at FROM livekit_sessions WHERE left_at IS NULL OR left_at >= ?1",
+            &[n(since as f64)],
+        )
+        .await
+    }
+
     pub fn from_env(env: &Env) -> Result<Self> {
         let secret = env
             .secret("HUB_SECRET")
@@ -1366,6 +1456,13 @@ impl Store {
                 self.db.prepare("DELETE FROM presence WHERE seen_at < ?1").bind(&[n((now - 30 * 86_400) as f64)])?,
                 self.db.prepare("DELETE FROM join_requests WHERE created_at < ?1").bind(&[n((now - 3600) as f64)])?,
                 self.db.prepare("DELETE FROM voice_peers WHERE seen_at < ?1").bind(&[n((now - 3600) as f64)])?,
+                // Voice usage: this month and last are shown, a little more is kept.
+                self.db
+                    .prepare("DELETE FROM livekit_sessions WHERE joined_at < ?1")
+                    .bind(&[n((now - 100 * 86_400) as f64)])?,
+                self.db
+                    .prepare("DELETE FROM relay_days WHERE updated_at < ?1")
+                    .bind(&[n((now - 100 * 86_400) as f64)])?,
             ])
             .await?;
         Ok(())

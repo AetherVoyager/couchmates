@@ -1101,3 +1101,131 @@ pub async fn addon_action(req: Request, store: &Store, id: &str, action: &str) -
         _ => web::redirect("/addons"),
     }
 }
+
+// -----------------------------------------------------------------------------
+// Voice: relay and LiveKit use
+
+pub async fn voice_page(req: &Request, store: &Store, flash: Option<Flash>) -> Result<Response> {
+    voice_page_with(req, store, flash, None).await
+}
+
+async fn voice_page_with(
+    req: &Request,
+    store: &Store,
+    flash: Option<Flash>,
+    new_token: Option<&str>,
+) -> Result<Response> {
+    use couchmates_hub_core::voice_usage::{self as vu, RELAY_STALE_SECS};
+    use ui::voice::{Day, LiveKit, LiveKitState, Relay, RelayState, Use};
+
+    let flash = flash.or_else(|| web::flash_from_query(req));
+    let now = now();
+    let today = day_start(now);
+    let month = month_start(now);
+    let last_month = month_start(month - 1);
+    let chart_from = today - 13 * 86_400;
+    let from = last_month.min(chart_from);
+
+    // Relay
+    let relay_rows = store.relay_days(&vu::day_label(from)).await?;
+    let relay_use = |start: i64, end: i64| {
+        let (a, b) = (vu::day_label(start), vu::day_label(end - 1));
+        relay_rows.iter().filter(|d| d.day >= a && d.day <= b).fold(Use::default(), |mut u, d| {
+            u.sessions += d.sessions as f64;
+            u.minutes += d.minutes;
+            u.bytes += d.bytes_in + d.bytes_out;
+            u.bytes_out += d.bytes_out;
+            u
+        })
+    };
+    let has_token = store.setting(vu::RELAY_TOKEN_HASH).await?.is_some();
+    let status = vu::relay_status(store).await?;
+    let state = match (&status, has_token) {
+        (_, false) => RelayState::NotSetUp,
+        (None, true) => RelayState::Waiting,
+        (Some(s), true) if now - s.received_at > RELAY_STALE_SECS => RelayState::Silent(s.received_at),
+        (Some(s), true) if !s.coturn_active => RelayState::CoturnStopped,
+        _ => RelayState::Up,
+    };
+    let fresh = matches!(state, RelayState::Up | RelayState::CoturnStopped);
+    let server = store.setting(voice::TURN_SERVER).await?;
+    let day_list = |f: &dyn Fn(i64, i64) -> Use| -> Vec<Day> {
+        (0..14)
+            .map(|i| chart_from + i * 86_400)
+            .map(|d| Day { day: vu::day_label(d), used: f(d, d + 86_400) })
+            .collect()
+    };
+    let relay = Relay {
+        state,
+        server: server.as_deref(),
+        allocations: status.as_ref().filter(|_| fresh).map_or(0, |s| s.allocations),
+        relaying: status.as_ref().filter(|_| fresh).map_or(0, |s| s.relaying),
+        uptime_secs: status.as_ref().map_or(0, |s| s.uptime_secs),
+        last_report: status.as_ref().map(|s| s.received_at),
+        today: relay_use(today, today + 86_400),
+        yesterday: relay_use(today - 86_400, today),
+        month: relay_use(month, now + 86_400),
+        last_month: relay_use(last_month, month),
+        days: day_list(&relay_use),
+        has_token,
+        new_token,
+    };
+
+    // LiveKit
+    let config = LiveKitConfig::load(store).await?;
+    let lk_state = match &config {
+        None => LiveKitState::NotConfigured,
+        Some(c) => match c.list_rooms().await {
+            Ok(rooms) => LiveKitState::Up { rooms: rooms.len(), people: rooms.iter().map(|r| r.participants).sum() },
+            Err(e) => LiveKitState::Error(e),
+        },
+    };
+    let sessions = store.livekit_sessions(from).await?;
+    let lk_use = |start: i64, end: i64| {
+        let u = vu::livekit_use(&sessions, start, end, now);
+        Use { sessions: u.sessions as f64, minutes: u.minutes, bytes: u.est_bytes, bytes_out: u.est_bytes }
+    };
+    let livekit = LiveKit {
+        state: lk_state,
+        webhook_at: store.setting(vu::LIVEKIT_WEBHOOK_AT).await?.and_then(|s| s.parse().ok()),
+        api_key: config.map(|c| c.api_key),
+        today: lk_use(today, today + 86_400),
+        yesterday: lk_use(today - 86_400, today),
+        month: lk_use(month, now + 1),
+        last_month: lk_use(last_month, month),
+        days: day_list(&lk_use),
+    };
+
+    let hub = hub_address(req)?;
+    let data = ui::voice::VoicePage {
+        relay,
+        livekit,
+        direct: voice::mode(store).await? == voice::voice_mode::DIRECT,
+        hub: &hub,
+        now,
+    };
+    page(ui::voice::page(&data, flash.as_ref()))
+}
+
+/// Voice → Make a token / Turn off for the relay monitor.
+pub async fn relay_monitor_action(req: &Request, store: &Store, action: &str) -> Result<Response> {
+    use couchmates_hub_core::voice_usage::{RELAY_STATUS, RELAY_TOKEN_HASH};
+    match action {
+        "relay-token" => {
+            let token = format!("cmr_{}", random_token());
+            store.set_setting(RELAY_TOKEN_HASH, Some(&sha256_hex(&token))).await?;
+            let flash = Flash::Ok("New relay monitor token made. Any older one stopped working.".into());
+            voice_page_with(req, store, Some(flash), Some(&token)).await
+        }
+        "relay-revoke" => {
+            store.set_setting(RELAY_TOKEN_HASH, None).await?;
+            store.set_setting(RELAY_STATUS, None).await?;
+            web::redirect_with(
+                "/voice",
+                true,
+                "Relay monitor turned off. Its token no longer works; the history stays.",
+            )
+        }
+        _ => web::redirect("/voice"),
+    }
+}

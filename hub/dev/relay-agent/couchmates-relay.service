@@ -1,0 +1,8 @@
+[Unit]
+Description=Couchmates relay monitor (one report to the Hub)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/lib/couchmates-relay/agent.py
+Nice=10

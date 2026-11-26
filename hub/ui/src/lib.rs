@@ -9,5 +9,6 @@ pub mod requests;
 pub mod settings;
 pub mod sign_in;
 pub mod users;
+pub mod voice;
 
 pub use layout::Flash;
