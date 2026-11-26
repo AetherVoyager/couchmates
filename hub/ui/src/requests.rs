@@ -134,11 +134,10 @@ pub fn page(requests: &[Request], filter: &str, pending: i64, bot: &BotAccess, f
                 }
             }
             div.row {
-                @for (value, label) in FILTERS {
-                    @if *value == filter {
-                        b { (label) @if *value == "pending" && pending > 0 { " (" (pending) ")" } }
-                    } @else {
-                        a href=(format!("/requests?status={value}")) {
+                nav.tabs aria-label="Show requests" {
+                    @for (value, label) in FILTERS {
+                        a href=(format!("/requests?status={value}")) class=[(*value == filter).then_some("on")]
+                            aria-current=[(*value == filter).then_some("page")] {
                             (label) @if *value == "pending" && pending > 0 { " (" (pending) ")" }
                         }
                     }

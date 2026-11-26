@@ -161,7 +161,7 @@ fn keep_hint(saved: bool, removable: bool) -> Markup {
 
 fn section(sec: &Section, desc: Markup, body: Markup) -> Markup {
     html! {
-        section.set-section #(sec.id) aria-labelledby=(format!("{}-title", sec.id)) {
+        section.set-section.glass #(sec.id) aria-labelledby=(format!("{}-title", sec.id)) {
             div.set-head {
                 h2 #(format!("{}-title", sec.id)) { (sec.title) }
                 (badge(sec))
@@ -441,7 +441,7 @@ pub fn page(s: &Settings, flash: Option<&Flash>) -> Markup {
         h1 { "Settings" }
         style { (PreEscaped(nav_css(&ids))) }
         div.settings {
-            nav.settings-nav aria-label="Settings sections" {
+            nav.settings-nav.glass aria-label="Settings sections" {
                 @for (group, list) in &groups {
                     div.group { (group) }
                     @for sec in list {
