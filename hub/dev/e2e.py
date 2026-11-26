@@ -204,6 +204,34 @@ check("removed add-ons leave the config", "addons" not in cfg)
 
 s, _, body = call(anon, "/api/app/voice-token", data={"room": "abc123"}, headers=auth)
 check("voice token", s == 200 and json.loads(body)["room"] == "couchmates-ABC123")
+check("voice token is LiveKit by default", "mode" not in json.loads(body) and json.loads(body)["token"])
+s, _, _ = call(anon, "/api/app/voice/peers", data={"room": "abc123"})
+check("voice peers needs sign-in", s == 401)
+s, _, page = call(b, "/settings/voice", form={"mode": "direct", "server": "turn:203.0.113.5"})
+check("direct voice needs a relay login", "Not saved" in page)
+s, _, page = call(b, "/settings/voice", form={"mode": "direct", "server": "turn:203.0.113.5", "username": "duo", "password": "relay-pass"})
+check("direct voice saved", "Voice chat is now direct, through 203.0.113.5:3478" in page, page[:300])
+check("relay password not shown", "relay-pass" not in page)
+s, _, body = call(anon, "/api/app/voice-token", data={"room": "abc123"}, headers=auth)
+grant = json.loads(body)
+turn = [x for x in grant.get("ice_servers", []) if x.get("username")]
+check("direct grant", grant.get("mode") == "direct" and grant["token"] == "" and turn and turn[0]["username"] == "duo"
+      and "turn:203.0.113.5:3478?transport=udp" in turn[0]["urls"], body)
+s, _, body = call(anon, "/api/app/voice/peers", data={"room": "abc123"}, headers=auth)
+me = json.loads(body)
+check("join direct voice room", s == 200 and me["identity"] == grant["identity"] and me["peers"] == [], body)
+s, _, body = call(anon, "/api/app/voice/signal", data={"room": "abc123", "to": "nobody:x", "kind": "offer", "data": "{}"}, headers=auth)
+check("signal to someone not in the room", s == 404, body)
+s, _, body = call(anon, "/api/app/voice/signal", data={"room": "abc123", "to": me["identity"], "kind": "bogus", "data": ""}, headers=auth)
+check("unknown signal kind", s == 400, body)
+s, _, body = call(anon, "/api/app/voice/peers", data={"room": "abc123", "leaving": True}, headers=auth)
+check("leave direct voice room", s == 200)
+s, _, body = call(anon, "/api/app/voice/signal", data={"room": "abc123", "to": me["identity"], "kind": "hello"}, headers=auth)
+check("signal after leaving", s == 409, body)
+s, _, page = call(b, "/settings/voice", form={"mode": "livekit", "server": "203.0.113.5:3478", "username": "duo"})
+check("back to LiveKit keeps the relay", "Voice chat uses LiveKit; the relay 203.0.113.5:3478 is kept" in page, page[:300])
+s, _, body = call(anon, "/api/app/voice-token", data={"room": "abc123"}, headers=auth)
+check("LiveKit again", "mode" not in json.loads(body))
 s, _, body = call(anon, "/api/app/login", data={"username": "alice", "password": gen_pw, "device_name": "Phone"})
 tok2 = json.loads(body)["token"]
 s, _, body = call(anon, "/api/app/password", data={"current_password": "nope", "new_password": "new-password-9"}, headers=auth)
@@ -431,6 +459,35 @@ call(b, f"/users/{alice_id}/chat-unadmin", form={})
 check("alice is an ordinary user again", "admin" not in json.loads(call(anon, "/api/app/chat", headers=auth)[2]))
 if live:
     live.close()
+
+# --- Direct voice: the Hub passes connection setup between two devices over their live sockets
+call(b, "/settings/voice", form={"mode": "direct", "server": "203.0.113.5:3478", "username": "duo", "password": "relay-pass"})
+alice_voice = ws_open("/api/app/chat/live", auth)
+bob_voice = ws_open("/api/app/chat/live", bob)
+s, _, body = call(anon, "/api/app/voice/peers", data={"room": "vox-123"}, headers=auth)
+alice_me = json.loads(body).get("identity", "")
+s, _, body = call(anon, "/api/app/voice/peers", data={"room": "vox123"}, headers=bob)
+bob_peers = json.loads(body) if s == 200 else {}
+check("bob joins and sees alice", [p["identity"] for p in bob_peers.get("peers", [])] == [alice_me], body)
+joined = json.loads(ws_read(alice_voice) or "{}") if alice_voice else {}
+check("alice hears bob joined", joined.get("kind") == "voice" and joined["voice"]["kind"] == "joined"
+      and joined["voice"]["from"] == bob_peers.get("identity") and joined["voice"]["room"] == "couchmates-VOX123", joined)
+s, _, body = call(anon, "/api/app/voice/signal", headers=auth,
+                  data={"room": "VOX123", "to": bob_peers.get("identity", ""), "kind": "offer", "data": '{"id":1,"sdp":"v=0"}'})
+check("alice offers to bob", s == 200, body)
+offer = json.loads(ws_read(bob_voice) or "{}") if bob_voice else {}
+check("bob gets the offer", offer.get("voice", {}).get("kind") == "offer" and offer["voice"]["from"] == alice_me
+      and offer["voice"]["to"] == bob_peers.get("identity") and offer["voice"]["data"] == '{"id":1,"sdp":"v=0"}', offer)
+s, _, body = call(anon, "/api/app/voice/peers", data={"room": "vox123", "leaving": True}, headers=bob)
+left = json.loads(ws_read(alice_voice) or "{}") if alice_voice else {}
+check("alice hears bob left", left.get("voice", {}).get("kind") == "left", left)
+s, _, page = call(b, "/", form=None)
+check("the overview lists direct voice rooms", "direct voice rooms" in page and "VOX123" in page, page[-500:])
+call(anon, "/api/app/voice/peers", data={"room": "vox123", "leaving": True}, headers=auth)
+for sock in (alice_voice, bob_voice):
+    if sock:
+        sock.close()
+call(b, "/settings/voice", form={"mode": "livekit", "server": "", "username": ""})
 
 # --- Title requests: friends ask for what isn't in the library, the admin answers on the dashboard
 s, _, _ = call(anon, "/api/app/requests")

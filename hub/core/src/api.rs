@@ -138,7 +138,7 @@ pub async fn config(req: Request, store: &Store) -> Result<Response> {
             .filter(|a| a.enabled)
             .map(|a| ExtraAddon { base_url: addons::base_url(&a.manifest_url).to_string(), id: a.id, name: a.name })
             .collect(),
-        voice: VoiceInfo { available: LiveKitConfig::load(store).await?.is_some() },
+        voice: VoiceInfo { available: crate::voice::available(store).await? },
     };
     web::json(&config, 200)
 }
@@ -154,13 +154,29 @@ pub async fn voice_token(mut req: Request, store: &Store) -> Result<Response> {
     let Some(room) = room_for_watch_code(&body.room) else {
         return json_error("That isn't a room code.", 400);
     };
+    // One identity per device, so the same person on two devices isn't kicked.
+    let identity = format!("{}:{}", user.id, device.id);
+    if crate::voice::mode(store).await? == couchmates_core::api::voice_mode::DIRECT
+        && let Some(relay) = crate::voice::RelayConfig::load(store).await?
+    {
+        let grant = crate::voice::direct_grant(&relay, &user.id, &identity, &room, VOICE_TOKEN_TTL_SECS);
+        return web::json(&grant, 200);
+    }
     let Some(livekit) = LiveKitConfig::load(store).await? else {
         return json_error("Voice chat isn't set up on this Hub.", 503);
     };
-    // One identity per device, so the same person on two devices isn't kicked.
-    let identity = format!("{}:{}", user.id, device.id);
     let token = livekit.join_token(&identity, &user.name, &room, VOICE_TOKEN_TTL_SECS);
-    web::json(&VoiceTokenResponse { url: livekit.url, token, room }, 200)
+    web::json(
+        &VoiceTokenResponse {
+            url: livekit.url,
+            token,
+            room,
+            mode: couchmates_core::api::voice_mode::LIVEKIT.to_string(),
+            ice_servers: vec![],
+            identity: None,
+        },
+        200,
+    )
 }
 
 pub async fn change_password(mut req: Request, store: &Store) -> Result<Response> {

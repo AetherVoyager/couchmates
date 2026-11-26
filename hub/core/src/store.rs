@@ -38,6 +38,8 @@ const SECRET_KEYS: &[&str] = &[
     "trakt_client_secret",
     "tmdb_key",
     "bot_webhook_url",
+    "turn_secret",
+    "turn_password",
 ];
 
 /// Secret keys an earlier version stored unencrypted. A value that doesn't
@@ -326,6 +328,16 @@ impl TitleAsk<'_> {
         }
         self.episodes.iter().map(|(s, e, _)| request_slot(Some(*s), Some(*e))).collect()
     }
+}
+
+/// A device in a direct voice room.
+#[derive(Debug, Clone, Deserialize)]
+pub struct VoicePeerRow {
+    pub identity: String,
+    pub room: String,
+    pub user_id: String,
+    pub name: String,
+    pub seen_at: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -888,6 +900,51 @@ impl Store {
     }
 
     // -------------------------------------------------------------------------
+    // Direct voice rooms
+
+    pub async fn voice_peer(&self, identity: &str) -> Result<Option<VoicePeerRow>> {
+        self.first("SELECT identity, room, user_id, name, seen_at FROM voice_peers WHERE identity = ?1", &[s(identity)])
+            .await
+    }
+
+    /// Who was in [room] at or after [since], oldest first.
+    pub async fn voice_peers(&self, room: &str, since: i64) -> Result<Vec<VoicePeerRow>> {
+        self.all(
+            "SELECT identity, room, user_id, name, seen_at FROM voice_peers WHERE room = ?1 AND seen_at >= ?2              ORDER BY identity",
+            &[s(room), n(since as f64)],
+        )
+        .await
+    }
+
+    /// Everyone in a direct voice room at or after [since], for the dashboard.
+    pub async fn all_voice_peers(&self, since: i64) -> Result<Vec<VoicePeerRow>> {
+        self.all(
+            "SELECT identity, room, user_id, name, seen_at FROM voice_peers WHERE seen_at >= ?1 ORDER BY room, name",
+            &[n(since as f64)],
+        )
+        .await
+    }
+
+    pub async fn save_voice_peer(
+        &self,
+        identity: &str,
+        room: &str,
+        user_id: &str,
+        name: &str,
+        seen_at: i64,
+    ) -> Result<()> {
+        self.run(
+            "INSERT INTO voice_peers (identity, room, user_id, name, seen_at) VALUES (?1, ?2, ?3, ?4, ?5)              ON CONFLICT(identity) DO UPDATE SET room = excluded.room, user_id = excluded.user_id,              name = excluded.name, seen_at = excluded.seen_at",
+            &[s(identity), s(room), s(user_id), s(name), n(seen_at as f64)],
+        )
+        .await
+    }
+
+    pub async fn delete_voice_peer(&self, identity: &str) -> Result<()> {
+        self.run("DELETE FROM voice_peers WHERE identity = ?1", &[s(identity)]).await
+    }
+
+    // -------------------------------------------------------------------------
     // Presence and join requests
 
     /// Every device's presence, for users who aren't turned off.
@@ -1308,6 +1365,7 @@ impl Store {
                 self.db.prepare("DELETE FROM tracker_pending WHERE expires_at < ?1").bind(&[n(now as f64)])?,
                 self.db.prepare("DELETE FROM presence WHERE seen_at < ?1").bind(&[n((now - 30 * 86_400) as f64)])?,
                 self.db.prepare("DELETE FROM join_requests WHERE created_at < ?1").bind(&[n((now - 3600) as f64)])?,
+                self.db.prepare("DELETE FROM voice_peers WHERE seen_at < ?1").bind(&[n((now - 3600) as f64)])?,
             ])
             .await?;
         Ok(())

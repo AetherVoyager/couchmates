@@ -93,6 +93,20 @@ class HubClient {
     await _send('POST', HubPaths.voiceToken, body: VoiceTokenRequest(room: roomCode).toJson()),
   );
 
+  /// Direct voice: joins, stays in or leaves (with [leaving]) [roomCode].
+  Future<VoicePeers> voicePeers(String roomCode, {bool leaving = false}) async => VoicePeers.fromJson(
+    await _send(
+      'POST',
+      HubPaths.voicePeers,
+      body: VoicePeersRequest(room: roomCode, leaving: leaving).toJson(),
+    ),
+  );
+
+  /// Direct voice: passes [signal] to another device in the room.
+  Future<void> voiceSignal(VoiceSignalSend signal) async {
+    await _send('POST', HubPaths.voiceSignal, body: signal.toJson());
+  }
+
   Future<void> changePassword(PasswordChangeRequest request) async {
     await _send('POST', HubPaths.password, body: request.toJson());
   }

@@ -31,6 +31,12 @@ pub fn room_for_watch_code(code: &str) -> Option<String> {
     (code.len() >= 4 && code.len() <= 16).then(|| format!("couchmates-{code}"))
 }
 
+/// Direct voice: apps repeat their `voice/peers` call this often while in a
+/// room.
+pub const VOICE_PEER_HEARTBEAT_SECS: i64 = 25;
+/// A direct voice peer not heard from for this long has left.
+pub const VOICE_PEER_STALE_SECS: i64 = 70;
+
 /// The chat channel everyone on the Hub can read.
 pub const PUBLIC_CHANNEL: &str = "public";
 /// Longest chat message, in characters.

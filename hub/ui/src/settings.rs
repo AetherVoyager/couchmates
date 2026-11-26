@@ -1,4 +1,4 @@
-//! The settings page: Telegram-Stremio, LiveKit, the Hub address and 2FA.
+//! The settings page: Telegram-Stremio, LiveKit, the voice relay, the Hub address and 2FA.
 
 use maud::{Markup, html};
 
@@ -14,6 +14,13 @@ pub struct Settings<'a> {
     pub livekit_url: Option<&'a str>,
     pub livekit_key: Option<&'a str>,
     pub livekit_has_secret: bool,
+    /// `livekit` or `direct`.
+    pub voice_mode: &'a str,
+    /// The TURN relay as `host:port`.
+    pub turn_server: Option<&'a str>,
+    pub turn_has_secret: bool,
+    pub turn_username: Option<&'a str>,
+    pub turn_has_password: bool,
     pub github_repo: Option<&'a str>,
     pub github_has_token: bool,
     pub trakt_client_id: Option<&'a str>,
@@ -65,6 +72,33 @@ pub fn page(s: &Settings, flash: Option<&Flash>) -> Markup {
                 label for="lk_secret" { "API secret" @if s.livekit_has_secret { " (leave blank to keep the saved one)" } }
                 input #lk_secret type="password" name="secret" autocomplete="new-password" required[!s.livekit_has_secret];
                 div.row { button type="submit" { "Save and test" } }
+            }
+        }
+        div.card #voice-relay {
+            h2 { "Voice relay (TURN)" }
+            p.muted {
+                "Optional. Your own TURN server (coturn), for direct voice: the apps in a watch party talk to each other "
+                "peer to peer, and go through this relay when they can't reach each other (mobile data, shared NAT). "
+                "The login stays on the Hub; apps get it only while signed in. With a shared secret (coturn's "
+                "use-auth-secret and static-auth-secret) each app gets a login that expires after 6 hours; otherwise "
+                "enter a fixed username and password from the relay's turnserver.conf."
+            }
+            form method="post" action="/settings/voice" {
+                label { "Voice chat uses" }
+                div.row {
+                    label { input type="radio" name="mode" value="livekit" checked[s.voice_mode != "direct"]; " LiveKit" }
+                    label { input type="radio" name="mode" value="direct" checked[s.voice_mode == "direct"]; " Direct, through this relay" }
+                }
+                p.muted { "Apps pick up a switch the next time they join voice. Direct voice suits a few people at a time, and needs the app version that added it on every device." }
+                label for="turn_server" { "Relay address" }
+                input #turn_server type="text" name="server" placeholder="203.0.113.5:3478" value=[s.turn_server];
+                label for="turn_secret" { "Shared secret" @if s.turn_has_secret { " (saved; leave blank to keep it, or type 'remove')" } }
+                input #turn_secret type="password" name="secret" autocomplete="new-password";
+                label for="turn_user" { "Or a fixed username" }
+                input #turn_user type="text" name="username" autocomplete="off" value=[s.turn_username];
+                label for="turn_pass" { "and its password" @if s.turn_has_password { " (saved; leave blank to keep it)" } }
+                input #turn_pass type="password" name="password" autocomplete="new-password";
+                div.row { button type="submit" { "Save" } }
             }
         }
         div.card {

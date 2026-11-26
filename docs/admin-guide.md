@@ -22,6 +22,7 @@ Hub's own secrets: [secrets.md](secrets.md).
 |---|---|---|
 | **Telegram-Stremio** | Your server's address (the one you install the Stremio addon from, without `/stremio/…`) and its admin login | Everything |
 | **LiveKit voice chat** | URL, API key and secret (LiveKit Cloud → Settings → API keys) | Voice chat |
+| **Voice relay (TURN)** | Your coturn relay's address (`host:3478`) and its login: the shared secret (coturn `use-auth-secret`) or a fixed username and password from `turnserver.conf`. Pick **Direct, through this relay** to switch voice from LiveKit to peer to peer | Direct voice chat (optional) |
 | **App updates** | Repository `AetherVoyager/couchmates` and a fine-grained GitHub token: this repo only, Contents read-only | Apps updating themselves |
 | **Trackers** | Trakt client ID + secret, Simkl client ID (register Couchmates on each site; the card links there) | Scrobbling (optional) |
 | **Cast photos (TMDB)** | A free TMDB key or read access token | Cast photos, age ratings, taglines, trailers (optional) |

@@ -7,6 +7,8 @@
 //! | `POST /api/app/login` | [`LoginRequest`] | [`LoginResponse`] |
 //! | `GET /api/app/config` | | [`AppConfig`] |
 //! | `POST /api/app/voice-token` | [`VoiceTokenRequest`] | [`VoiceTokenResponse`] |
+//! | `POST /api/app/voice/peers` | [`VoicePeersRequest`] | [`VoicePeers`] |
+//! | `POST /api/app/voice/signal` | [`VoiceSignalSend`] | [`OkResponse`] |
 //! | `POST /api/app/password` | [`PasswordChangeRequest`] | [`OkResponse`] |
 //! | `POST /api/app/logout` | | [`OkResponse`] |
 //! | `GET /api/app/update?platform=windows&version=0.1.0` | | [`UpdateInfo`] |
@@ -47,6 +49,8 @@ pub mod paths {
     pub const LOGIN: &str = "/api/app/login";
     pub const CONFIG: &str = "/api/app/config";
     pub const VOICE_TOKEN: &str = "/api/app/voice-token";
+    pub const VOICE_PEERS: &str = "/api/app/voice/peers";
+    pub const VOICE_SIGNAL: &str = "/api/app/voice/signal";
     pub const PASSWORD: &str = "/api/app/password";
     pub const LOGOUT: &str = "/api/app/logout";
     pub const UPDATE: &str = "/api/app/update";
@@ -158,13 +162,116 @@ pub struct VoiceTokenRequest {
     pub room: String,
 }
 
+/// How voice chat connects, as the admin picked on the Hub.
+pub mod voice_mode {
+    /// Through the LiveKit server in [`VoiceTokenResponse::url`].
+    pub const LIVEKIT: &str = "livekit";
+    /// Peer to peer between the apps in the room, through the
+    /// [`ice_servers`](super::VoiceTokenResponse::ice_servers) (the admin's
+    /// TURN relay) when they can't reach each other. The Hub passes the
+    /// connection setup along: [`VoicePeersRequest`](super::VoicePeersRequest),
+    /// [`VoiceSignalSend`](super::VoiceSignalSend) and `voice` frames on the
+    /// live chat socket.
+    pub const DIRECT: &str = "direct";
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VoiceTokenResponse {
-    /// LiveKit server URL (`wss://…`).
+    /// LiveKit server URL (`wss://…`). Empty in direct mode.
     pub url: String,
-    /// LiveKit join token, valid for 6 hours, microphone only.
+    /// LiveKit join token, valid for 6 hours, microphone only. Empty in
+    /// direct mode.
     pub token: String,
     pub room: String,
+    /// A [`voice_mode`]; left out means LiveKit (older Hubs).
+    #[serde(default = "livekit_mode", skip_serializing_if = "is_livekit")]
+    pub mode: String,
+    /// STUN/TURN servers for direct mode, with logins that expire with the
+    /// grant.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ice_servers: Vec<IceServer>,
+    /// This device's identity in the room (`<user id>:<device id>`), in
+    /// direct mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<String>,
+}
+
+fn livekit_mode() -> String {
+    voice_mode::LIVEKIT.to_string()
+}
+
+fn is_livekit(mode: &String) -> bool {
+    mode == voice_mode::LIVEKIT
+}
+
+/// One WebRTC ICE server, as `RTCIceServer` takes it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IceServer {
+    /// Such as `turn:203.0.113.5:3478?transport=udp` or `stun:203.0.113.5:3478`.
+    pub urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential: Option<String>,
+}
+
+/// Direct voice: joins [room] (or stays in it; apps repeat this every
+/// [`VOICE_PEER_HEARTBEAT_SECS`](crate::rules::VOICE_PEER_HEARTBEAT_SECS)),
+/// or leaves it with [leaving]. Joining tells the others with a `joined`
+/// [`VoiceSignal`], leaving with `left`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VoicePeersRequest {
+    /// The watch party room code.
+    pub room: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub leaving: bool,
+}
+
+/// Who else is in a direct voice room.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VoicePeers {
+    /// This device's identity.
+    pub identity: String,
+    pub peers: Vec<VoicePeer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VoicePeer {
+    /// `<user id>:<device id>`.
+    pub identity: String,
+    pub name: String,
+}
+
+/// Direct voice: a message for one other device in the room, which the Hub
+/// passes on as a [`VoiceSignal`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VoiceSignalSend {
+    pub room: String,
+    /// The other device's identity.
+    pub to: String,
+    /// `offer`, `answer`, `ice` or `hello` (asks the other side to offer).
+    pub kind: String,
+    /// The SDP or the candidate as JSON; empty for `hello`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub data: String,
+}
+
+/// A `voice` frame on the live chat socket. Apps ignore it unless they're
+/// in [room] and it's [to] them (or to everyone in the room when None).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VoiceSignal {
+    /// The Hub's voice room name (see `rules::room_for_watch_code`).
+    pub room: String,
+    /// The sender's identity.
+    pub from: String,
+    /// The sender's display name.
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+    /// `joined`, `left`, or a [`VoiceSignalSend::kind`].
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub data: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -631,6 +738,7 @@ pub struct ChatMute {
 /// - `deleted`: [message](ChatEvent::message) was deleted; drop it.
 /// - `refresh`: this user's chat standing changed (muted, made an admin):
 ///   fetch the overview again.
+/// - `voice`: a direct voice [signal](ChatEvent::voice).
 ///
 /// A `ping` text frame is answered with `pong`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -638,6 +746,8 @@ pub struct ChatEvent {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<ChatMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice: Option<VoiceSignal>,
 }
 
 /// A request's status. Only the admin changes it, on the dashboard's Requests page. Asking never downloads
@@ -823,6 +933,12 @@ mod tests {
         round_trips::<AppConfig>(include_str!("../contract/config_response_no_addon.json"));
         round_trips::<VoiceTokenRequest>(include_str!("../contract/voice_token_request.json"));
         round_trips::<VoiceTokenResponse>(include_str!("../contract/voice_token_response.json"));
+        round_trips::<VoiceTokenResponse>(include_str!("../contract/voice_token_response_direct.json"));
+        round_trips::<VoicePeersRequest>(include_str!("../contract/voice_peers_request.json"));
+        round_trips::<VoicePeersRequest>(include_str!("../contract/voice_peers_request_leaving.json"));
+        round_trips::<VoicePeers>(include_str!("../contract/voice_peers.json"));
+        round_trips::<VoiceSignalSend>(include_str!("../contract/voice_signal_send.json"));
+        round_trips::<ChatEvent>(include_str!("../contract/chat_event_voice.json"));
         round_trips::<PasswordChangeRequest>(include_str!("../contract/password_request.json"));
         round_trips::<OkResponse>(include_str!("../contract/ok_response.json"));
         round_trips::<ErrorResponse>(include_str!("../contract/error_response.json"));

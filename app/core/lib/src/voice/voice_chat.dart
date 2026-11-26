@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../hub/api.dart';
+import 'direct_voice.dart';
 import 'voice_session.dart';
 
 enum VoiceStatus { off, connecting, connected, failed }
@@ -19,7 +20,8 @@ String micErrorText(Object error) {
 
 /// Voice chat for the watch party room the user is in. Joins the room's
 /// voice channel (muted) each time the user enters a room, and leaves with
-/// it. The Hub hands out the LiveKit token, so no keys live in the app.
+/// it. The Hub hands out the LiveKit token, so no keys live in the app. When
+/// the Hub says voice is direct, [connectDirect] joins peer to peer instead.
 ///
 /// Call [roomChanged] whenever the watch room's code changes (null when the
 /// user leaves the room).
@@ -28,6 +30,7 @@ class VoiceChat extends ChangeNotifier {
     required Future<VoiceTokenResponse> Function(String roomCode) token,
     required bool Function() available,
     VoiceSessionFactory? connect,
+    DirectVoiceFactory? connectDirect,
     this.joinMuted = true,
     this.micDeviceId,
     Map<String, double>? personVolumes,
@@ -43,11 +46,13 @@ class VoiceChat extends ChangeNotifier {
   }) : _personVolumes = {...?personVolumes},
        _token = token,
        _available = available,
-       _connect = connect ?? connectLiveKitSession;
+       _connect = connect ?? connectLiveKitSession,
+       _connectDirect = connectDirect;
 
   final Future<VoiceTokenResponse> Function(String roomCode) _token;
   final bool Function() _available;
   final VoiceSessionFactory _connect;
+  final DirectVoiceFactory? _connectDirect;
   bool joinMuted;
 
   /// The microphone to use; null for the system default.
@@ -173,14 +178,25 @@ class VoiceChat extends ChangeNotifier {
     _notify();
     try {
       final grant = await _token(room);
-      final session = await _connect(
-        url: grant.url,
-        token: grant.token,
-        micEnabled: false,
-        micDeviceId: micDeviceId,
-        volumes: _effectiveVolumes,
-        otherVolume: voiceVolume,
-      );
+      final direct = _connectDirect;
+      if (grant.direct && direct == null) throw Exception("This app can't use direct voice.");
+      final session = grant.direct
+          ? await direct!(
+              grant: grant,
+              roomCode: room,
+              micEnabled: false,
+              micDeviceId: micDeviceId,
+              volumes: _effectiveVolumes,
+              otherVolume: voiceVolume,
+            )
+          : await _connect(
+              url: grant.url,
+              token: grant.token,
+              micEnabled: false,
+              micDeviceId: micDeviceId,
+              volumes: _effectiveVolumes,
+              otherVolume: voiceVolume,
+            );
       if (generation != _generation || _disposed) {
         await session.close();
         return;

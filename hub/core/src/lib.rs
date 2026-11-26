@@ -8,6 +8,7 @@
 //! - [`tgs`]: the Telegram-Stremio admin API (access tokens, stats).
 //! - [`catalog_check`]: why a user's app would show an empty catalog.
 //! - [`livekit`]: voice join tokens and the room list.
+//! - [`voice`]: LiveKit or direct voice, the TURN relay, direct voice rooms.
 //! - [`api`]: the app API handlers (`/api/app/*`), using the shapes in
 //!   `couchmates-core`.
 //! - [`tmdb`]: cast and crew for details pages.
@@ -37,4 +38,5 @@ pub mod tmdb;
 pub mod trackers;
 pub mod updates;
 pub mod usage;
+pub mod voice;
 pub mod web;

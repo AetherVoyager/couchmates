@@ -9,6 +9,8 @@ abstract final class HubPaths {
   static const login = '/api/app/login';
   static const config = '/api/app/config';
   static const voiceToken = '/api/app/voice-token';
+  static const voicePeers = '/api/app/voice/peers';
+  static const voiceSignal = '/api/app/voice/signal';
   static const password = '/api/app/password';
   static const logout = '/api/app/logout';
   static const update = '/api/app/update';
@@ -176,17 +178,178 @@ class VoiceTokenRequest {
   Json toJson() => {'room': room};
 }
 
-class VoiceTokenResponse {
-  const VoiceTokenResponse({required this.url, required this.token, required this.room});
+/// How voice chat connects: see `voice_mode` in `core/src/api.rs`.
+abstract final class VoiceMode {
+  static const livekit = 'livekit';
+  static const direct = 'direct';
+}
 
+class VoiceTokenResponse {
+  const VoiceTokenResponse({
+    required this.url,
+    required this.token,
+    required this.room,
+    this.mode = VoiceMode.livekit,
+    this.iceServers = const [],
+    this.identity,
+  });
+
+  /// LiveKit's address; empty in direct mode.
   final String url;
   final String token;
   final String room;
 
-  factory VoiceTokenResponse.fromJson(Json j) =>
-      VoiceTokenResponse(url: j['url'] as String, token: j['token'] as String, room: j['room'] as String);
+  /// A [VoiceMode].
+  final String mode;
 
-  Json toJson() => {'url': url, 'token': token, 'room': room};
+  /// Direct mode: the STUN/TURN servers, with the relay's login.
+  final List<IceServer> iceServers;
+
+  /// Direct mode: this device in the room, `<user id>:<device id>`.
+  final String? identity;
+
+  bool get direct => mode == VoiceMode.direct;
+
+  factory VoiceTokenResponse.fromJson(Json j) => VoiceTokenResponse(
+    url: j['url'] as String,
+    token: j['token'] as String,
+    room: j['room'] as String,
+    mode: j['mode'] as String? ?? VoiceMode.livekit,
+    iceServers: [for (final s in (j['ice_servers'] as List?) ?? const []) IceServer.fromJson(s as Json)],
+    identity: j['identity'] as String?,
+  );
+
+  Json toJson() => {
+    'url': url,
+    'token': token,
+    'room': room,
+    if (mode != VoiceMode.livekit) 'mode': mode,
+    if (iceServers.isNotEmpty) 'ice_servers': [for (final s in iceServers) s.toJson()],
+    'identity': ?identity,
+  };
+}
+
+/// One WebRTC ICE server, as `RTCPeerConnection` takes it ([toJson]).
+class IceServer {
+  const IceServer({required this.urls, this.username, this.credential});
+
+  final List<String> urls;
+  final String? username;
+  final String? credential;
+
+  factory IceServer.fromJson(Json j) => IceServer(
+    urls: [for (final u in j['urls'] as List) u as String],
+    username: j['username'] as String?,
+    credential: j['credential'] as String?,
+  );
+
+  Json toJson() => {'urls': urls, 'username': ?username, 'credential': ?credential};
+}
+
+/// Direct voice: joins or stays in [room] (repeat every
+/// [voicePeerHeartbeat]), or leaves it with [leaving].
+class VoicePeersRequest {
+  const VoicePeersRequest({required this.room, this.leaving = false});
+
+  final String room;
+  final bool leaving;
+
+  factory VoicePeersRequest.fromJson(Json j) =>
+      VoicePeersRequest(room: j['room'] as String, leaving: j['leaving'] as bool? ?? false);
+
+  Json toJson() => {'room': room, if (leaving) 'leaving': true};
+}
+
+/// Who else is in a direct voice room.
+class VoicePeers {
+  const VoicePeers({required this.identity, required this.peers});
+
+  final String identity;
+  final List<VoicePeer> peers;
+
+  factory VoicePeers.fromJson(Json j) => VoicePeers(
+    identity: j['identity'] as String,
+    peers: [for (final p in j['peers'] as List) VoicePeer.fromJson(p as Json)],
+  );
+
+  Json toJson() => {
+    'identity': identity,
+    'peers': [for (final p in peers) p.toJson()],
+  };
+}
+
+class VoicePeer {
+  const VoicePeer({required this.identity, required this.name});
+
+  final String identity;
+  final String name;
+
+  factory VoicePeer.fromJson(Json j) => VoicePeer(identity: j['identity'] as String, name: j['name'] as String);
+
+  Json toJson() => {'identity': identity, 'name': name};
+}
+
+/// Direct voice: a message for one other device in the room.
+class VoiceSignalSend {
+  const VoiceSignalSend({required this.room, required this.to, required this.kind, this.data = ''});
+
+  final String room;
+  final String to;
+
+  /// `offer`, `answer`, `ice` or `hello`.
+  final String kind;
+  final String data;
+
+  factory VoiceSignalSend.fromJson(Json j) => VoiceSignalSend(
+    room: j['room'] as String,
+    to: j['to'] as String,
+    kind: j['kind'] as String,
+    data: j['data'] as String? ?? '',
+  );
+
+  Json toJson() => {'room': room, 'to': to, 'kind': kind, if (data.isNotEmpty) 'data': data};
+}
+
+/// A `voice` frame on the live chat socket.
+class VoiceSignal {
+  const VoiceSignal({
+    required this.room,
+    required this.from,
+    required this.name,
+    this.to,
+    required this.kind,
+    this.data = '',
+  });
+
+  /// The Hub's room name, `couchmates-<CODE>`.
+  final String room;
+  final String from;
+  final String name;
+
+  /// The device it's for; null for everyone in the room.
+  final String? to;
+
+  /// `joined`, `left`, `offer`, `answer`, `ice` or `hello`.
+  final String kind;
+  final String data;
+
+  factory VoiceSignal.fromJson(Json j) => VoiceSignal(
+    room: j['room'] as String,
+    from: j['from'] as String,
+    name: j['name'] as String,
+    to: j['to'] as String?,
+    kind: j['kind'] as String,
+    data: j['data'] as String? ?? '',
+  );
+
+  Json toJson() => {
+    'room': room,
+    'from': from,
+    'name': name,
+    'to': ?to,
+    'kind': kind,
+    if (data.isNotEmpty) 'data': data,
+  };
 }
 
 class PasswordChangeRequest {
@@ -1112,19 +1275,22 @@ class ChatMute {
 
 /// A frame on the live chat socket: `message` (a new one), `deleted` (drop
 /// that message) or `refresh` (this user's chat standing changed: fetch the
-/// overview again). Other kinds are ignored.
+/// overview again) or `voice` (a direct voice [voice] signal). Other kinds
+/// are ignored.
 class ChatEvent {
-  const ChatEvent({required this.kind, this.message});
+  const ChatEvent({required this.kind, this.message, this.voice});
 
   final String kind;
   final ChatMessage? message;
+  final VoiceSignal? voice;
 
   factory ChatEvent.fromJson(Json j) => ChatEvent(
     kind: j['kind'] as String,
     message: j['message'] == null ? null : ChatMessage.fromJson(j['message'] as Json),
+    voice: j['voice'] == null ? null : VoiceSignal.fromJson(j['voice'] as Json),
   );
 
-  Json toJson() => {'kind': kind, 'message': ?message?.toJson()};
+  Json toJson() => {'kind': kind, 'message': ?message?.toJson(), 'voice': ?voice?.toJson()};
 }
 
 /// One track of a video file, shared through the Hub.

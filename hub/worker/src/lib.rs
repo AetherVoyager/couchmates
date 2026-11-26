@@ -6,7 +6,7 @@ mod chat_live;
 
 pub use chat_live::ChatLive;
 
-use couchmates_hub_core::{api, bot, chat, crypto, jellyfin, requests, social, store, tgs, web};
+use couchmates_hub_core::{api, bot, chat, crypto, jellyfin, requests, social, store, tgs, voice, web};
 
 use worker::{Context, Env, Method, Request, Response, Result, ScheduleContext, ScheduledEvent, event};
 
@@ -37,6 +37,8 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
             (Method::Post, "password") => api::change_password(req, &store).await,
             (Method::Get, "config") => api::config(req, &store).await,
             (Method::Post, "voice-token") => api::voice_token(req, &store).await,
+            (Method::Post, "voice/peers") => voice::peers(req, &store, env).await,
+            (Method::Post, "voice/signal") => voice::send_signal(req, &store, env).await,
             (Method::Post, "logout") => api::logout(req, &store).await,
             (Method::Get, "update") => api::update(req, &store).await,
             (Method::Post, "update/download") => api::update_download(req, &store).await,
@@ -153,6 +155,7 @@ async fn route(req: Request, env: &Env) -> Result<Response> {
         (Method::Post, ["settings", "tgs"]) => admin::save_tgs(req, &store).await,
         (Method::Post, ["settings", "tgs", "show-catalog"]) => admin::show_catalog(req, &store).await,
         (Method::Post, ["settings", "livekit"]) => admin::save_livekit(req, &store).await,
+        (Method::Post, ["settings", "voice"]) => admin::save_voice(req, &store).await,
         (Method::Post, ["settings", "updates"]) => admin::save_updates(req, &store).await,
         (Method::Post, ["settings", "trackers"]) => admin::save_trackers(req, &store).await,
         (Method::Post, ["settings", "tmdb"]) => admin::save_tmdb(req, &store).await,

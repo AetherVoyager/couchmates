@@ -156,6 +156,8 @@ pub enum Mic {
     Muted,
     /// No microphone track: they joined but never sent audio.
     None,
+    /// Direct voice: the Hub doesn't see the audio, only that they're in.
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq)]

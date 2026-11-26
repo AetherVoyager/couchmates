@@ -19,6 +19,7 @@ use couchmates_hub_core::tgs::{TgsClient, TgsConfig, TokenUsage, normalize_base_
 use couchmates_hub_core::tmdb::Tmdb;
 use couchmates_hub_core::updates::{GitHubConfig, normalize_repo};
 use couchmates_hub_core::usage::{daily_usage, day_start, month_start, used_since};
+use couchmates_hub_core::voice;
 use couchmates_hub_core::web::{self, Flash};
 use couchmates_hub_ui as ui;
 use maud::Markup;
@@ -212,26 +213,44 @@ pub async fn overview(req: &Request, store: &Store) -> Result<Response> {
         })
         .unwrap_or_default();
 
-    // LiveKit: who is talking right now.
-    let voice = match LiveKitConfig::load(store).await? {
-        Some(config) => match config.list_rooms().await {
-            Ok(rooms) => {
-                // Who's in each room, for rooms with people (a few at most).
-                let mut detail = Vec::new();
-                for r in rooms.iter().filter(|r| r.participants > 0).take(8) {
-                    if let Ok(members) = config.list_participants(&r.name).await {
-                        detail.push((r.name.clone(), members));
+    // Who is talking right now: the Hub's own list in direct mode, else LiveKit's.
+    let voice = if voice::mode(store).await? == voice::voice_mode::DIRECT {
+        let peers = store.all_voice_peers(now - voice::STALE_SECS).await?;
+        let mut detail: Vec<(String, Vec<couchmates_hub_core::livekit::VoiceMember>)> = Vec::new();
+        for p in peers {
+            let member = couchmates_hub_core::livekit::VoiceMember {
+                name: p.name,
+                mic: couchmates_hub_core::livekit::Mic::Unknown,
+            };
+            match detail.last_mut() {
+                Some((room, members)) if *room == p.room => members.push(member),
+                _ => detail.push((p.room, vec![member])),
+            }
+        }
+        let people = detail.iter().map(|(_, m)| m.len() as u64).sum();
+        ui::overview::VoiceStatus::Rooms { rooms: detail.len(), people, detail, direct: true }
+    } else {
+        match LiveKitConfig::load(store).await? {
+            Some(config) => match config.list_rooms().await {
+                Ok(rooms) => {
+                    // Who's in each room, for rooms with people (a few at most).
+                    let mut detail = Vec::new();
+                    for r in rooms.iter().filter(|r| r.participants > 0).take(8) {
+                        if let Ok(members) = config.list_participants(&r.name).await {
+                            detail.push((r.name.clone(), members));
+                        }
+                    }
+                    ui::overview::VoiceStatus::Rooms {
+                        rooms: rooms.len(),
+                        people: rooms.iter().map(|r| r.participants).sum(),
+                        detail,
+                        direct: false,
                     }
                 }
-                ui::overview::VoiceStatus::Rooms {
-                    rooms: rooms.len(),
-                    people: rooms.iter().map(|r| r.participants).sum(),
-                    detail,
-                }
-            }
-            Err(e) => ui::overview::VoiceStatus::Error(e),
-        },
-        None => ui::overview::VoiceStatus::NotConfigured,
+                Err(e) => ui::overview::VoiceStatus::Error(e),
+            },
+            None => ui::overview::VoiceStatus::NotConfigured,
+        }
     };
 
     let history = store.usage_since((now - 8 * 86_400).min(month_start(now))).await?;
@@ -530,6 +549,9 @@ async fn settings_page_with(
     let tgs_username = store.setting("tgs_username").await?;
     let livekit_url = store.setting("livekit_url").await?;
     let livekit_key = store.setting("livekit_key").await?;
+    let voice_mode = store.setting(voice::MODE).await?;
+    let turn_server = store.setting(voice::TURN_SERVER).await?;
+    let turn_username = store.setting(voice::TURN_USERNAME).await?;
     let github_repo = store.setting("github_repo").await?;
     let tgs_hide_catalog = match TgsClient::new(store).await {
         Ok(mut c) => c.hide_catalog().await.ok(),
@@ -547,6 +569,11 @@ async fn settings_page_with(
         livekit_url: livekit_url.as_deref(),
         livekit_key: livekit_key.as_deref(),
         livekit_has_secret: store.setting("livekit_secret").await?.is_some(),
+        voice_mode: voice_mode.as_deref().unwrap_or(voice::voice_mode::LIVEKIT),
+        turn_server: turn_server.as_deref(),
+        turn_has_secret: store.setting(voice::TURN_SECRET).await?.is_some(),
+        turn_username: turn_username.as_deref(),
+        turn_has_password: store.setting(voice::TURN_PASSWORD).await?.is_some(),
         github_repo: github_repo.as_deref(),
         github_has_token: store.setting("github_token").await?.is_some(),
         trakt_client_id: trakt_client_id.as_deref(),
@@ -619,6 +646,61 @@ pub async fn save_livekit(mut req: Request, store: &Store) -> Result<Response> {
         }
         Err(e) => settings_page(&req, store, Some(Flash::Bad(format!("Not saved: {e}.")))).await,
     }
+}
+
+pub async fn save_voice(mut req: Request, store: &Store) -> Result<Response> {
+    use voice::voice_mode::{DIRECT, LIVEKIT};
+    let form = req.form_data().await?;
+    let mode = if form.get_field("mode").as_deref() == Some(DIRECT) { DIRECT } else { LIVEKIT };
+    let typed_server = form.get_field("server").unwrap_or_default();
+    let server = if typed_server.trim().is_empty() {
+        None
+    } else {
+        match voice::normalize_server(&typed_server) {
+            Some(s) => Some(s),
+            None => {
+                let flash = Flash::Bad("Enter the relay as an address and port, such as 203.0.113.5:3478.".into());
+                return settings_page(&req, store, Some(flash)).await;
+            }
+        }
+    };
+    let typed_secret = form.get_field("secret").unwrap_or_default().trim().to_string();
+    let secret = match typed_secret.as_str() {
+        "" => store.setting(voice::TURN_SECRET).await?,
+        "remove" => None,
+        s => Some(s.to_string()),
+    };
+    let username = Some(form.get_field("username").unwrap_or_default().trim().to_string()).filter(|u| !u.is_empty());
+    let typed_password = form.get_field("password").unwrap_or_default();
+    let password = match (&username, typed_password.is_empty()) {
+        (None, _) => None,
+        (Some(_), true) => store.setting(voice::TURN_PASSWORD).await?,
+        (Some(_), false) => Some(typed_password),
+    };
+    if username.is_some() && password.is_none() {
+        return settings_page(&req, store, Some(Flash::Bad("Not saved. Enter the relay password too.".into()))).await;
+    }
+    let has_login = secret.is_some() || password.is_some();
+    if mode == DIRECT && (server.is_none() || !has_login) {
+        let flash = Flash::Bad(
+            "Not saved. Direct voice needs the relay address, and its shared secret or a username and password.".into(),
+        );
+        return settings_page(&req, store, Some(flash)).await;
+    }
+    store.set_setting(voice::TURN_SERVER, server.as_deref()).await?;
+    store.set_setting(voice::TURN_SECRET, secret.as_deref()).await?;
+    store.set_setting(voice::TURN_USERNAME, username.as_deref()).await?;
+    store.set_setting(voice::TURN_PASSWORD, password.as_deref()).await?;
+    store.set_setting(voice::MODE, Some(mode)).await?;
+    let msg = match (mode, &server) {
+        (DIRECT, Some(s)) => format!(
+            "Saved. Voice chat is now direct, through {s}. {}",
+            if secret.is_some() { "Apps get logins made from the shared secret." } else { "Apps get the fixed login." }
+        ),
+        (_, Some(s)) => format!("Saved. Voice chat uses LiveKit; the relay {s} is kept for when you switch."),
+        _ => "Saved. Voice chat uses LiveKit.".to_string(),
+    };
+    settings_page(&req, store, Some(Flash::Ok(msg))).await
 }
 
 pub async fn save_updates(mut req: Request, store: &Store) -> Result<Response> {

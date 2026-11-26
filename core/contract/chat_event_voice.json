@@ -1,0 +1,1 @@
+{ "kind": "voice", "voice": { "room": "couchmates-ABC123", "from": "u1:d1", "name": "Alice", "to": "u2:d7", "kind": "offer", "data": "{\"type\":\"offer\",\"sdp\":\"v=0\"}" } }

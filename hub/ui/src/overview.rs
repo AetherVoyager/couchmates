@@ -13,7 +13,13 @@ use crate::layout::{Flash, ago, bars, gb, layout, limit};
 pub enum VoiceStatus {
     NotConfigured,
     Error(String),
-    Rooms { rooms: usize, people: u64, detail: Vec<(String, Vec<VoiceMember>)> },
+    /// [direct]: peer to peer through the TURN relay, from the Hub's own list.
+    Rooms {
+        rooms: usize,
+        people: u64,
+        detail: Vec<(String, Vec<VoiceMember>)>,
+        direct: bool,
+    },
 }
 
 /// What the overview shows. `system`, `bots` and the `live` streams are the
@@ -67,7 +73,8 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
                     @match &data.voice {
                         VoiceStatus::NotConfigured => a href="/settings" { "Set up LiveKit" },
                         VoiceStatus::Error(e) => span.pill.bad { "LiveKit: " (e) },
-                        VoiceStatus::Rooms { rooms, .. } => { (rooms) " voice rooms open" },
+                        VoiceStatus::Rooms { rooms, direct: false, .. } => { (rooms) " voice rooms open" },
+                        VoiceStatus::Rooms { rooms, direct: true, .. } => { (rooms) " direct voice rooms" },
                     }
                 }
             }
@@ -141,11 +148,15 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
                 div.row.muted { "Today and this month run from midnight UTC, worked out from the hourly totals." }
             }
         }
-        @if let VoiceStatus::Rooms { detail, .. } = &data.voice {
+        @if let VoiceStatus::Rooms { detail, direct, .. } = &data.voice {
             @if !detail.is_empty() {
                 div.card {
                     h2 { "Voice chat now" }
-                    p.muted { "Straight from LiveKit. A green mic means that person is sending audio; ask someone to talk and watch their speaking light in the app." }
+                    @if *direct {
+                        p.muted { "Direct voice through your relay: the Hub only knows who joined, not whose mic is on. Ask someone to talk and watch their speaking light in the app." }
+                    } @else {
+                        p.muted { "Straight from LiveKit. A green mic means that person is sending audio; ask someone to talk and watch their speaking light in the app." }
+                    }
                     table {
                         tr { th { "Watch party room" } th { "People" } }
                         @for (room, members) in detail {
@@ -153,8 +164,12 @@ pub fn page(data: &Overview, flash: Option<&Flash>) -> Markup {
                                 td { (room.trim_start_matches("couchmates-")) }
                                 td {
                                     @for m in members {
-                                        span class=(match m.mic { Mic::On => "pill ok", Mic::Muted => "pill warn", Mic::None => "pill bad" }) {
-                                            (m.name) " · " (match m.mic { Mic::On => "mic on", Mic::Muted => "muted", Mic::None => "no mic" })
+                                        @if m.mic == Mic::Unknown {
+                                            span.pill { (m.name) }
+                                        } @else {
+                                            span class=(match m.mic { Mic::On => "pill ok", Mic::Muted => "pill warn", _ => "pill bad" }) {
+                                                (m.name) " · " (match m.mic { Mic::On => "mic on", Mic::Muted => "muted", _ => "no mic" })
+                                            }
                                         }
                                         " "
                                     }

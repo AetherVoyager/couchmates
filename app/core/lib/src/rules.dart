@@ -30,6 +30,10 @@ String? roomForWatchCode(String code) {
   return cleaned.length >= 4 && cleaned.length <= 16 ? 'couchmates-$cleaned' : null;
 }
 
+/// Direct voice: how often the app repeats its `voice/peers` call while in a
+/// room (`VOICE_PEER_HEARTBEAT_SECS` on the Hub).
+const voicePeerHeartbeat = Duration(seconds: 25);
+
 /// The chat channel everyone on the Hub can read.
 const publicChannel = 'public';
 

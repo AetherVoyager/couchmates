@@ -280,7 +280,9 @@ pub async fn send(mut req: Request, store: &Store, env: &Env) -> Result<Response
     store.mark_chat_read(&user.id, &channel, row.id).await?;
     let message = message(&row);
     let to = recipient.map(|other| vec![user.id.clone(), other]);
-    if let Err(e) = push(env, to, &ChatEvent { kind: "message".into(), message: Some(message.clone()) }).await {
+    if let Err(e) =
+        push(env, to, &ChatEvent { kind: "message".into(), message: Some(message.clone()), voice: None }).await
+    {
         worker::console_warn!("chat push failed: {e}");
     }
     web::json(&message, 200)
@@ -319,7 +321,7 @@ pub async fn delete(mut req: Request, store: &Store, env: &Env) -> Result<Respon
         return json_error("Only chat admins can delete other people's messages.", 403);
     }
     store.delete_chat(row.id).await?;
-    let event = ChatEvent { kind: "deleted".into(), message: Some(message(&row)) };
+    let event = ChatEvent { kind: "deleted".into(), message: Some(message(&row)), voice: None };
     if let Err(e) = push(env, audience(&row), &event).await {
         worker::console_warn!("chat push failed: {e}");
     }
@@ -355,7 +357,8 @@ pub async fn mute(mut req: Request, store: &Store, env: &Env) -> Result<Response
 /// Tells [user_id]'s apps that their chat standing changed. Never fails.
 pub async fn refresh(env: &Env, user_id: &str) {
     if let Err(e) =
-        push(env, Some(vec![user_id.to_string()]), &ChatEvent { kind: "refresh".into(), message: None }).await
+        push(env, Some(vec![user_id.to_string()]), &ChatEvent { kind: "refresh".into(), message: None, voice: None })
+            .await
     {
         worker::console_warn!("chat push failed: {e}");
     }
@@ -389,7 +392,7 @@ pub struct Push {
     pub frame: String,
 }
 
-async fn push(env: &Env, to: Option<Vec<String>>, event: &ChatEvent) -> Result<()> {
+pub(crate) async fn push(env: &Env, to: Option<Vec<String>>, event: &ChatEvent) -> Result<()> {
     let body = serde_json::to_string(&Push { to, frame: serde_json::to_string(event)? })?;
     let headers = Headers::new();
     headers.set("Content-Type", "application/json")?;

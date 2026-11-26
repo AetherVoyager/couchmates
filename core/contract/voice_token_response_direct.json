@@ -1,0 +1,1 @@
+{ "url": "", "token": "", "room": "couchmates-ABC123", "mode": "direct", "ice_servers": [ { "urls": ["stun:203.0.113.5:3478"] }, { "urls": ["turn:203.0.113.5:3478?transport=udp", "turn:203.0.113.5:3478?transport=tcp"], "username": "1794990000:u1:d1", "credential": "c2lnbmVk" } ], "identity": "u1:d1" }

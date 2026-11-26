@@ -208,6 +208,59 @@ void main() {
   });
 
   group('VoiceChat', () {
+    test('a direct grant joins peer to peer with the relay, not LiveKit', () async {
+      final direct = <VoiceTokenResponse>[];
+      var livekit = 0;
+      final voice = VoiceChat(
+        token: (_) async =>
+            VoiceTokenResponse.fromJson(jsonDecode(contract('voice_token_response_direct.json')) as Json),
+        available: () => true,
+        connect:
+            ({
+              required url,
+              required token,
+              required micEnabled,
+              micDeviceId,
+              volumes = const {},
+              otherVolume = 1,
+            }) async {
+              livekit++;
+              return FakeVoiceSession(micEnabled);
+            },
+        connectDirect:
+            ({
+              required grant,
+              required roomCode,
+              required micEnabled,
+              micDeviceId,
+              volumes = const {},
+              otherVolume = 1,
+            }) async {
+              direct.add(grant);
+              expect(roomCode, 'ABC123');
+              return FakeVoiceSession(micEnabled);
+            },
+      );
+      await voice.roomChanged('ABC123');
+      expect(voice.connected, isTrue);
+      expect(livekit, 0);
+      expect(direct.single.iceServers.last.urls, contains('turn:203.0.113.5:3478?transport=udp'));
+      expect(direct.single.identity, 'u1:d1');
+      await voice.roomChanged(null);
+    });
+
+    test('a direct grant without direct support says so', () async {
+      final voice = VoiceChat(
+        token: (_) async =>
+            VoiceTokenResponse.fromJson(jsonDecode(contract('voice_token_response_direct.json')) as Json),
+        available: () => true,
+        retryDelays: const [],
+      );
+      await voice.roomChanged('ABC123');
+      expect(voice.status, VoiceStatus.failed);
+      expect(voice.error, contains('direct voice'));
+    });
+
     test('joins muted on entering a room, leaves with it, and rejoins on the next visit', () async {
       final tokens = <String>[];
       final sessions = <FakeVoiceSession>[];

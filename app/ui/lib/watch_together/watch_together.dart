@@ -17,6 +17,21 @@ class WatchTogether extends ChangeNotifier {
     voice = VoiceChat(
       token: session.voiceToken,
       available: () => session.voiceAvailable,
+      connectDirect:
+          ({required grant, required roomCode, required micEnabled, micDeviceId, volumes = const {}, otherVolume = 1}) {
+            final hub = session.hub;
+            if (hub == null) throw Exception('Sign in to use voice chat.');
+            return connectDirectSession(
+              grant: grant,
+              roomCode: roomCode,
+              signaling: HubVoiceSignaling(hub),
+              selfName: session.config?.user.name ?? 'Me',
+              micEnabled: micEnabled,
+              micDeviceId: micDeviceId,
+              volumes: volumes,
+              otherVolume: otherVolume,
+            );
+          },
       joinMuted: settings.get(Settings.joinMuted),
       micDeviceId: settings.get(Settings.voiceMic),
       voiceVolume: settings.get(Settings.voiceVolume) / 100,

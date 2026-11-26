@@ -22,6 +22,12 @@ void main() {
     roundTrips('config_response_no_addon.json', (j) => AppConfig.fromJson(j).toJson());
     roundTrips('voice_token_request.json', (j) => VoiceTokenRequest.fromJson(j).toJson());
     roundTrips('voice_token_response.json', (j) => VoiceTokenResponse.fromJson(j).toJson());
+    roundTrips('voice_token_response_direct.json', (j) => VoiceTokenResponse.fromJson(j).toJson());
+    roundTrips('voice_peers_request.json', (j) => VoicePeersRequest.fromJson(j).toJson());
+    roundTrips('voice_peers_request_leaving.json', (j) => VoicePeersRequest.fromJson(j).toJson());
+    roundTrips('voice_peers.json', (j) => VoicePeers.fromJson(j).toJson());
+    roundTrips('voice_signal_send.json', (j) => VoiceSignalSend.fromJson(j).toJson());
+    roundTrips('chat_event_voice.json', (j) => ChatEvent.fromJson(j).toJson());
     roundTrips('password_request.json', (j) => PasswordChangeRequest.fromJson(j).toJson());
     roundTrips('ok_response.json', (j) => OkResponse.fromJson(j).toJson());
     roundTrips('error_response.json', (j) => ErrorResponse.fromJson(j).toJson());

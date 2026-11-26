@@ -46,6 +46,7 @@ export 'src/stremio/models.dart';
 export 'src/stremio/online_subtitles.dart';
 export 'src/stremio/stream_details.dart';
 export 'src/stremio/stremio_client.dart';
+export 'src/voice/direct_voice.dart';
 export 'src/voice/voice_chat.dart';
 export 'src/voice/voice_session.dart';
 export 'src/watch/scrobbler.dart';

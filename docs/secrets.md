@@ -32,6 +32,7 @@ For local development, `hub/.dev.vars` holds test values for both (copy `hub/.de
 |---|---|
 | Telegram-Stremio admin login | Your Telegram-Stremio server's admin username and password |
 | LiveKit API key and secret | LiveKit Cloud → Settings → API keys (or your own LiveKit server's config) |
+| Voice relay password or shared secret | The relay's `/etc/turnserver.conf` (`user=name:password`, or `static-auth-secret`). On the Oracle relay only the fixed user works: coturn 4.5.2 turns fixed users off when `use-auth-secret` is on, which would lock DuoDoku out. Signed-in apps get it in direct mode |
 | GitHub token (app updates) | GitHub → Settings → Developer settings → Fine-grained tokens: repository `AetherVoyager/couchmates` only, **Contents: read-only**. Renew it before it expires, or apps stop seeing updates |
 | Trakt client ID and secret | trakt.tv → Settings → Your API Apps → New application |
 | Simkl client ID | simkl.com → Settings → Developer → New app |
