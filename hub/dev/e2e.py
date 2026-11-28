@@ -127,16 +127,16 @@ check("right setup code turns 2FA on", s == 303 and hd["location"].startswith("/
 s, _, _ = call(a, "/")
 check("dashboard opens after setup", s == 200)
 
-# --- Admin: later sign-ins need the code; replay is refused
+# --- Admin: later sign-ins need only the code; replay is refused
 b = client()
+s, _, page = call(b, "/login")
+check("login page asks only for the code", s == 200 and 'name="code"' in page and 'name="password"' not in page)
 s, _, _ = call(b, "/login", form={"password": ADMIN_PW, "code": ""})
-check("login without code refused", s == 401)
-s, _, _ = call(b, "/login", form={"password": "nope", "code": totp(secret, offset=1)})
-check("wrong password with good code refused", s == 401)
-s, _, _ = call(b, "/login", form={"password": ADMIN_PW, "code": totp(secret)})
+check("password without code refused", s == 401)
+s, _, _ = call(b, "/login", form={"code": totp(secret)})
 check("code from setup can't be replayed", s == 401)
-s, hd, _ = call(b, "/login", form={"password": ADMIN_PW, "code": totp(secret, offset=1)})
-check("password + next code signs in", s == 303 and hd["location"] == "/", f"{s}")
+s, hd, _ = call(b, "/login", form={"code": totp(secret, offset=1)})
+check("next code alone signs in", s == 303 and hd["location"] == "/", f"{s}")
 
 # --- Connect the fake servers
 s, _, page = call(b, "/settings/tgs", form={"url": "http://127.0.0.1:8899", "username": "admin", "password": "admin-pass"})

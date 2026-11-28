@@ -23,12 +23,18 @@ use couchmates_hub_core::usage::{daily_usage, day_start, month_start, used_since
 use couchmates_hub_core::voice;
 use couchmates_hub_core::web::{self, Flash};
 use couchmates_hub_ui as ui;
+use couchmates_hub_ui::sign_in::LoginForm;
 use maud::Markup;
 use serde_json::Value;
 use worker::{Env, Request, Response, Result};
 
 const LOGIN_WINDOW_SECS: i64 = 15 * 60;
 const LOGIN_MAX_FAILS: i64 = 10;
+/// Wrong codes from every address together, per day, before sign-in needs the
+/// admin password as well. A 6-digit code alone can be guessed in time; this
+/// keeps the odds to a few percent a year even under a constant attack.
+const LOGIN_GLOBAL_WINDOW_SECS: i64 = 24 * 60 * 60;
+const LOGIN_GLOBAL_MAX_FAILS: i64 = 30;
 
 fn page(markup: Markup) -> Result<Response> {
     web::html(markup.into_string())
@@ -63,8 +69,18 @@ pub async fn session(req: &Request, store: &Store) -> Result<AdminSession> {
     })
 }
 
-pub fn login_page() -> Result<Response> {
-    page(ui::sign_in::login(None))
+async fn login_form(store: &Store) -> Result<LoginForm> {
+    Ok(if store.setting("totp_secret").await?.is_none() {
+        LoginForm::Setup
+    } else if store.recent_failed_logins_all(LOGIN_GLOBAL_WINDOW_SECS).await? >= LOGIN_GLOBAL_MAX_FAILS {
+        LoginForm::Locked
+    } else {
+        LoginForm::Code
+    })
+}
+
+pub async fn login_page(store: &Store) -> Result<Response> {
+    page(ui::sign_in::login(login_form(store).await?, None))
 }
 
 /// Accepts [code] for the saved authenticator secret once: a code (time step)
@@ -83,26 +99,41 @@ async fn accept_totp(store: &Store, secret: &str, code: &str) -> Result<bool> {
 
 pub async fn login(mut req: Request, env: &Env, store: &Store) -> Result<Response> {
     let ip = web::client_ip(&req);
+    let kind = login_form(store).await?;
     if store.recent_failed_logins(&ip, LOGIN_WINDOW_SECS).await? >= LOGIN_MAX_FAILS {
-        return page_status(ui::sign_in::login(Some("Too many failed attempts. Try again in 15 minutes.")), 429);
+        return page_status(ui::sign_in::login(kind, Some("Too many failed attempts. Try again in 15 minutes.")), 429);
     }
-    let Ok(expected) = env.secret("ADMIN_PASSWORD").map(|s| s.to_string()) else {
-        return page_status(ui::sign_in::login(Some("ADMIN_PASSWORD isn't set on the Worker.")), 500);
-    };
     let form = req.form_data().await?;
-    let password = form.get_field("password").unwrap_or_default();
     let code = form.get_field("code").unwrap_or_default();
-    let password_ok = !expected.is_empty() && password_matches(&password, &expected);
-    let totp_secret = store.setting("totp_secret").await?;
-    let full = match (&totp_secret, password_ok) {
-        (_, false) => None,
-        (Some(secret), true) => accept_totp(store, secret, &code).await?.then_some(true),
+    let password_ok = || -> Result<bool> {
+        let expected = env.secret("ADMIN_PASSWORD").map(|s| s.to_string()).unwrap_or_default();
+        let password = form.get_field("password").unwrap_or_default();
+        Ok(!expected.is_empty() && password_matches(&password, &expected))
+    };
+    if kind != LoginForm::Code && env.secret("ADMIN_PASSWORD").is_err() {
+        return page_status(ui::sign_in::login(kind, Some("ADMIN_PASSWORD isn't set on the Worker.")), 500);
+    }
+    let full = match kind {
         // No authenticator yet: the password alone leads only to setting one up.
-        (None, true) => Some(false),
+        LoginForm::Setup => password_ok()?.then_some(false),
+        LoginForm::Code => {
+            accept_totp(store, &store.setting("totp_secret").await?.unwrap_or_default(), &code).await?.then_some(true)
+        }
+        LoginForm::Locked => match password_ok()? {
+            true => accept_totp(store, &store.setting("totp_secret").await?.unwrap_or_default(), &code)
+                .await?
+                .then_some(true),
+            false => None,
+        },
     };
     let Some(full) = full else {
         store.record_failed_login(&ip).await?;
-        return page_status(ui::sign_in::login(Some("Wrong password or authenticator code.")), 401);
+        let message = match kind {
+            LoginForm::Setup => "Wrong password.",
+            LoginForm::Code => "Wrong authenticator code.",
+            LoginForm::Locked => "Wrong password or authenticator code.",
+        };
+        return page_status(ui::sign_in::login(login_form(store).await?, Some(message)), 401);
     };
     let token = random_token();
     store.create_admin_session(&token, web::SESSION_TTL_SECS, full).await?;

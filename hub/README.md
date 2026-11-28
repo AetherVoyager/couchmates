@@ -5,8 +5,9 @@ an unchanged [Telegram-Stremio](https://github.com/weebzone/Telegram-Stremio) se
 
 - **Overview:** users, active devices, live streams, the library, Telegram bot health, data use per user with
   an hourly 7-day chart, and **Voice chat now**: each LiveKit room with every person's mic state.
-- **Admin sign-in:** the admin password plus a 6-digit authenticator code (TOTP). The first sign-in leads
-  straight to setting up the authenticator app.
+- **Admin sign-in:** a 6-digit authenticator code (TOTP) alone. The first sign-in uses the admin password and
+  leads straight to setting up the authenticator app. After 30 wrong codes in 24 hours across all addresses, the
+  password is asked for again as well, and each address is blocked for 15 minutes after 10 wrong tries.
 - **Users:** each user signs in to the app with a username and password. Behind the scenes they get a
   Telegram-Stremio access token with optional data limits, but they never see it. You can reset a user's
   password (which signs them out everywhere), disable or enable them (which revokes or replaces the token),

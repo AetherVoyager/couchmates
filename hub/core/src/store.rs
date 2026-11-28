@@ -549,6 +549,22 @@ impl Store {
         Ok(row.map_or(0, |r| r.count))
     }
 
+    /// Failed admin sign-ins from every address in the window (app sign-ins,
+    /// keyed `app-…`, don't count).
+    pub async fn recent_failed_logins_all(&self, window_secs: i64) -> Result<i64> {
+        #[derive(Deserialize)]
+        struct Row {
+            count: i64,
+        }
+        let row: Option<Row> = self
+            .first(
+                "SELECT COUNT(*) AS count FROM login_attempts WHERE at > ?1 AND ip NOT LIKE 'app-%'",
+                &[n((now() - window_secs) as f64)],
+            )
+            .await?;
+        Ok(row.map_or(0, |r| r.count))
+    }
+
     pub async fn record_failed_login(&self, ip: &str) -> Result<()> {
         self.run("INSERT INTO login_attempts (ip, at) VALUES (?1, ?2)", &[s(ip), n(now() as f64)]).await
     }

@@ -5,9 +5,11 @@ server for voice. The Hub is at the `workers.dev` address `npx wrangler deploy` 
 
 ## First sign-in
 
-1. Open the Hub and sign in with the admin password (`hub/admin-password.local.txt`). Leave the code empty.
+1. Open the Hub and sign in with the admin password (`hub/admin-password.local.txt`).
 2. Scan the QR code with an authenticator app (Google Authenticator, 1Password, Bitwarden, Aegis…) and enter a code.
-   From now on, signing in needs the password **and** a code.
+   From now on, signing in needs only a code from the app. After 30 wrong codes in a day (from anywhere), the
+   sign-in page asks for the password as well until the day has passed, so a 6-digit code can't be guessed by
+   brute force. Each address is also blocked for 15 minutes after 10 wrong tries.
 
 Lost the phone? From `hub/`:
 `npx wrangler d1 execute couchmates-hub --remote --command "DELETE FROM settings WHERE key LIKE 'totp%'; DELETE FROM admin_sessions;"`

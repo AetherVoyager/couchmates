@@ -466,7 +466,7 @@ pub fn page(s: &Settings, flash: Option<&Flash>) -> Markup {
 
     let two_factor = section(
         find("two-factor"),
-        html! { p { "Signing in to this dashboard needs the admin password and a code from your authenticator app." } },
+        html! { p { "Signing in to this dashboard needs a code from your authenticator app. After many wrong codes, the admin password is needed too for a day." } },
         html! {
             form method="post" action="/settings/2fa/reset#two-factor" {
                 div.part style="margin-top:20px" {
